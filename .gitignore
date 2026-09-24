@@ -1,0 +1,8 @@
+# Personal settings (ntfy topic, auto-accept state) - created on first run
+config.json
+
+# Raw League client captures (contain game/player IDs)
+capture/
+
+__pycache__/
+*.pyc

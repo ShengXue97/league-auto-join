@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#010a13">
+<title>League Remote</title>
+<style>
+  :root {
+    --bg: #010a13; --panel: #0a1428; --gold: #c8aa6e; --gold-dim: #785a28;
+    --text: #f0e6d2; --muted: #a09b8c; --blue: #0ac8b9; --red: #e84057; --green: #0acb6e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 20px 16px;
+  }
+  .wrap { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 14px; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; margin: 0; text-align: center; }
+  .card { background: var(--panel); border: 1px solid var(--gold-dim); border-radius: 10px; padding: 18px; }
+  .phase { font-size: 28px; font-weight: 700; text-align: center; }
+  .sub { color: var(--muted); text-align: center; font-size: 15px; margin-top: 6px; min-height: 1.2em; }
+  .big { font-size: 44px; font-variant-numeric: tabular-nums; text-align: center; font-weight: 700; }
+  .btns { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+  button {
+    font: inherit; font-weight: 700; letter-spacing: .08em; border-radius: 8px; border: 2px solid;
+    padding: 22px 10px; font-size: 20px; cursor: pointer; color: var(--text); background: transparent;
+  }
+  button:disabled { opacity: .3; }
+  #accept { border-color: var(--blue); background: #0ac8b922; }
+  #decline { border-color: var(--red); background: #e8405718; font-size: 15px; }
+  .ready #accept:not(:disabled) { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { background: #0ac8b966; } }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .toggle { width: 64px; height: 36px; border-radius: 18px; border: 2px solid var(--gold-dim); position: relative; padding: 0; background: #1e2328; flex: none; }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--muted); transition: .15s; }
+  .toggle.on { background: #0acb6e33; border-color: var(--green); }
+  .toggle.on::after { left: 31px; background: var(--green); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .log { color: var(--muted); font-size: 13px; text-align: center; min-height: 1.2em; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: middle; }
+  .dot.ok { background: var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <h1>League Remote</h1>
+
+  <div class="card">
+    <div class="phase" id="phase">Connecting…</div>
+    <div class="big" id="clock"></div>
+    <div class="sub" id="sub"></div>
+  </div>
+
+  <div class="btns">
+    <button id="accept" disabled>ACCEPT</button>
+    <button id="decline" disabled>DECLINE</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div><b>Auto-accept</b></div>
+        <div class="hint">Accept instantly and just notify me</div>
+      </div>
+      <button class="toggle" id="auto" aria-label="Toggle auto-accept"></button>
+    </div>
+  </div>
+
+  <div class="log"><span class="dot" id="dot"></span><span id="log"></span></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const mmss = s => s == null ? "" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const NAMES = {
+  None: "Idle", Lobby: "In Lobby", Matchmaking: "In Queue", ReadyCheck: "MATCH FOUND!",
+  ChampSelect: "Champ Select", InProgress: "In Game", GameStart: "Loading Game",
+  WaitingForStats: "Post Game", PreEndOfGame: "Post Game", EndOfGame: "Post Game",
+  Reconnect: "Reconnect Needed",
+};
+
+function render(s) {
+  $("dot").classList.toggle("ok", !!s.connected);
+  $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
+  $("auto").classList.toggle("on", !!s.auto_accept);
+  $("log").textContent = s.last_event || "";
+
+  let clock = "", sub = "";
+  if (s.phase === "Matchmaking") {
+    clock = mmss(s.time_in_queue);
+    sub = s.estimated ? `Estimated: ${mmss(s.estimated)}` : "";
+  } else if (s.phase === "ReadyCheck") {
+    clock = s.ready_timer != null ? Math.max(0, Math.ceil(10 - s.ready_timer)) + "s" : "";
+    sub = s.my_response === "Accepted" ? "✔ You accepted — waiting for others"
+        : s.my_response === "Declined" ? "✖ You declined" : "Tap ACCEPT now!";
+  } else if (s.phase === "ChampSelect") {
+    clock = s.cs_time_left != null ? s.cs_time_left + "s" : "";
+    sub = s.cs_phase ? `Phase: ${s.cs_phase} — get back!` : "Get back!";
+  }
+  $("clock").textContent = clock;
+  $("sub").textContent = sub;
+
+  const canAnswer = s.phase === "ReadyCheck" && s.my_response === "None";
+  $("accept").disabled = $("decline").disabled = !canAnswer;
+  $("app").classList.toggle("ready", s.phase === "ReadyCheck");
+  document.title = s.phase === "ReadyCheck" ? "⚠ MATCH FOUND" : "League Remote";
+}
+
+async function call(method, path) {
+  try {
+    const r = await fetch(path, { method, cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok) { $("log").textContent = data.error || `Error ${r.status}`; return; }
+    render(data);
+  } catch (e) {
+    $("dot").classList.remove("ok");
+    $("log").textContent = "Can't reach PC — same Wi-Fi?";
+  }
+}
+
+$("accept").onclick = () => call("POST", "/api/accept");
+$("decline").onclick = () => call("POST", "/api/decline");
+$("auto").onclick = () => call("POST", "/api/auto");
+
+call("GET", "/api/status");
+setInterval(() => call("GET", "/api/status"), 1000);
+</script>
+</body>
+</html>
