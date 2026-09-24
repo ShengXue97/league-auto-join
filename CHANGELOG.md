@@ -3,6 +3,13 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.5.1] - 2026-09-24
+### Fixed
+- Aegis of Valor after a role swap: League Remote re-checked your *new* role, so
+  swapping from an autofilled Support (#5) into Jungle (#3) still showed
+  "+40% possible". It now remembers the role you were first assigned; swapping
+  shows "Aegis of Valor lost" and the game is tracked as a normal game.
+
 ## [1.5.0] - 2026-09-24
 ### Added
 - Aegis of Valor: League Remote reads your 5 role preferences from the lobby

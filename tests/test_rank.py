@@ -116,8 +116,12 @@ check(len(summ["seen"]) == 1 and summ["seen"][0]["observed_bonus"] == 83 and sum
 check(rank.aegis_summary(aeg, None)["seen"][0]["observed_bonus"] is None, "no observed % without a normal win baseline")
 tc = rank.RankTracker(os.path.join(tempfile.mkdtemp(), "r.jsonl"))
 tc.update({"pos": 1922, "wins": 60, "losses": 54})
-c = tc.update({"pos": 1962, "wins": 61, "losses": 54}, {"id": 7, "champ": "Janna"}, {"role": "UTILITY", "pref": 5})
+c = tc.update({"pos": 1962, "wins": 61, "losses": 54}, {"id": 7, "champ": "Janna"}, {"role": "UTILITY", "pref": 5, "aegis": True})
 check(c["role"] == "UTILITY" and c["pref"] == 5, "role and preference saved with the SP change")
+check(c["aegis"] is True, "Aegis flag saved")
+swapped = changes + [dict(ch(30, True), pref=4, role="BOTTOM", aegis=False)]
+check(rank.learned_sp(swapped)["win"] == 26 and rank.aegis_summary(swapped, 26)["seen"] == [],
+      "role-swapped win counts as a normal win, not Aegis")
 
 print("\nALL PASSED" if not failed else "\nSOME FAILED")
 sys.exit(1 if failed else 0)

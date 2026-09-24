@@ -37,6 +37,13 @@ AEGIS_BONUS = {3: 40, 4: 70, 5: 100}
 ROLE_NAMES = {"TOP": "Top", "JUNGLE": "Jungle", "MIDDLE": "Mid", "BOTTOM": "Bot", "UTILITY": "Support"}
 
 
+def is_aegis_game(c):
+    """Was this tracked game played with Aegis of Valor possible (autofilled role, not swapped)?"""
+    if "aegis" in c:
+        return bool(c["aegis"])
+    return (c.get("pref") or 0) in AEGIS_BONUS  # older records without the flag
+
+
 def aegis_for(role, prefs):
     """Assigned role + preference order (5 roles) -> Aegis info, or None if not eligible."""
     role = (role or "").upper()
@@ -169,6 +176,7 @@ class RankTracker:
         }
         if context and played == 1:
             change["role"], change["pref"] = context.get("role"), context.get("pref")
+            change["aegis"] = bool(context.get("aegis"))
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(change) + "\n")
         return change
@@ -179,7 +187,7 @@ def learned_sp(changes):
     single = [c for c in changes if c.get("games") == 1 and c.get("win") is not None]
     # wins in an Aegis-eligible role may be boosted - keep them out of your normal win SP
     wins = [c["delta"] for c in single if c["win"] and c["delta"] > 0
-            and (c.get("pref") or 0) not in AEGIS_BONUS][-LEARN_LAST:]
+            and not is_aegis_game(c)][-LEARN_LAST:]
     # a loss at the emblem floor shows 0 - it says nothing about SP per loss
     losses = [-c["delta"] for c in single if not c["win"] and c["delta"] < 0][-LEARN_LAST:]
     return {
@@ -195,7 +203,7 @@ def aegis_summary(changes, base_win):
     """Tracked wins in Aegis-eligible roles, compared with your normal win SP (when known)."""
     seen = []
     for c in changes:
-        if c.get("games") == 1 and c.get("win") and (c.get("pref") or 0) in AEGIS_BONUS:
+        if c.get("games") == 1 and c.get("win") and is_aegis_game(c) and c.get("pref") in AEGIS_BONUS:
             seen.append({
                 "time": c["time"], "role": ROLE_NAMES.get(c.get("role") or "", ""), "pref": c["pref"],
                 "delta": c["delta"], "max_bonus": AEGIS_BONUS[c["pref"]],
@@ -269,7 +277,7 @@ def predict(entry, changes, recent_results):
         "scenarios": scenarios,
         "history": [{"time": c["time"], "delta": c["delta"], "win": c.get("win"), "games": c.get("games"),
                      "champ": c.get("champ"), "role": ROLE_NAMES.get(c.get("role") or "", ""),
-                     "pref": c.get("pref"), "after": describe(c["after"]["pos"])["text"]}
+                     "pref": c.get("pref"), "aegis": is_aegis_game(c), "after": describe(c["after"]["pos"])["text"]}
                     for c in reversed(changes[-15:])],
         "aegis": aegis_summary(changes, g),
         "trend": [c["after"]["pos"] for c in changes[-30:]],

@@ -299,10 +299,17 @@ check(cs["aegis"] and cs["aegis"]["role_name"] == "Mid" and cs["aegis"]["pref"] 
 check(cs["aegis"]["base_win"] is None, "no SP estimate in the banner before your win SP is learned")
 start = [n for n in sent if n[0] == "CHAMP SELECT STARTED"]
 check(start and "Aegis of Valor possible: Mid is your #3 role" in start[0][1], "start alert mentions Aegis")
-check(w.game_context == {"role": "MIDDLE", "pref": 3, "aegis": cs["aegis"]}, "role remembered for SP tracking")
-lcu.team[ME]["assignedPosition"] = "jungle"
+check(w.game_context == {"role": "MIDDLE", "pref": 3, "aegis": True}, "role remembered for SP tracking")
+lcu.team[ME]["assignedPosition"] = "bottom"  # role swap into another #3-#5 role
 w.tick()
-check(w.snapshot()["cs"]["aegis"] is None and w.game_context["pref"] == 2, "2nd preference -> no Aegis")
+ae = w.snapshot()["cs"]["aegis"]
+check(ae and ae["lost"] and ae["role_name"] == "Mid" and ae["now"] == "Bot",
+      f"swapped Mid -> Bot: Aegis lost even though Bot is #4 ({ae})")
+check(w.game_context == {"role": "BOTTOM", "pref": 4, "aegis": False}, "swapped game tracked as a normal game")
+cfg, lcu, w, sent = make()
+lcu.team[ME]["assignedPosition"] = "jungle"  # autofilled into 2nd preference
+w.tick()
+check(w.snapshot()["cs"]["aegis"] is None and w.game_context["aegis"] is False, "2nd preference -> no Aegis")
 
 # ------------------------------------------------------------ 7. not your turn
 cfg, lcu, w, sent = make()

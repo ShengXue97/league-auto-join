@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 import ingame
 import rank
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -339,6 +339,7 @@ class Watcher:
         self.notified_swaps = set()   # incoming swap ids already alerted
         self.swap_sent = None         # (swap id, my pick order when sent)
         self.fav_lost = set()         # favorite ids already reported as banned/taken
+        self.first_role = None        # role assigned when champ select started (before any role swap)
 
     def snapshot(self):
         with self.lock:
@@ -396,10 +397,11 @@ class Watcher:
             st["cs_time_left"] = cs.get("time_left")
             me_p = next((p for p in cs["team"] if p["me"]), {})
             if me_p.get("pos"):
-                self.game_context = {"role": me_p["pos"].upper(), "pref": (cs.get("aegis") or {}).get("pref")
-                                     or (self.prefs.index(me_p["pos"].upper()) + 1
-                                         if me_p["pos"].upper() in self.prefs else None),
-                                     "aegis": cs.get("aegis")}
+                role = me_p["pos"].upper()
+                ae = cs.get("aegis")
+                self.game_context = {"role": role,
+                                     "pref": self.prefs.index(role) + 1 if role in self.prefs else None,
+                                     "aegis": bool(ae and not ae.get("lost"))}
             self.maybe_notify_turn(cs)
             self.maybe_notify_swaps(cs)
             self.maybe_notify_fav_lost(cs)
@@ -442,9 +444,18 @@ class Watcher:
             self.prefs = prefs
 
     def aegis_now(self, role):
-        ae = rank.aegis_for(role, self.prefs)
-        if ae:
-            ae["base_win"] = rank.learned_sp(self.rank.changes())["win"]  # None until learned
+        """Aegis of Valor depends on the role you were autofilled into. Swapping roles
+        with a teammate loses it - even if the new role is also one of your #3-#5."""
+        role = (role or "").upper()
+        if role and self.first_role is None:
+            self.first_role = role
+        ae = rank.aegis_for(self.first_role, self.prefs)
+        if not ae:
+            return None
+        if role and role != self.first_role:
+            return {**ae, "lost": True, "now": rank.ROLE_NAMES.get(role, role.title())}
+        ae["lost"] = False
+        ae["base_win"] = rank.learned_sp(self.rank.changes())["win"]  # None until learned
         return ae
 
     # ------------------------------------------------ champion select
@@ -849,7 +860,7 @@ class Watcher:
             title += f" {sign}{change['delta']} SP"
             lines.append(f"Now {rank.describe(change['after']['pos'])['text']}")
             pred = self.rank_prediction()
-            if change.get("win") and (change.get("pref") or 0) in rank.AEGIS_BONUS:
+            if change.get("win") and rank.is_aegis_game(change) and change.get("pref") in rank.AEGIS_BONUS:
                 role = rank.ROLE_NAMES.get(change.get("role") or "", "")
                 base = (pred or {}).get("sp", {}).get("win")
                 usual = f" - your usual win is +{base}" if base else ""
@@ -986,7 +997,8 @@ class Watcher:
                             if f["status"] == "available"), None)
                 self.notifier.champ_select_started(st.get("cs_time_left"),
                                                    fav if cs.get("pick_action") else None,
-                                                   cs.get("swap_up"), cs.get("aegis"))
+                                                   cs.get("swap_up"),
+                                                   cs.get("aegis") if not (cs.get("aegis") or {}).get("lost") else None)
         elif new == "Matchmaking" and old != "ReadyCheck":
             self.event("Entered queue")
 
