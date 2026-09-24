@@ -222,7 +222,7 @@ lcu.team[0]["championId"] = 60080
 lcu.actions[1][0].update(championId=60080, completed=True)
 w.tick()
 lost = [n for n in sent if "UNAVAILABLE" in n[0]]
-check(lost and "picked by P0" in lost[0][1], "ally took Pantheon -> alert names the ally")
+check(lost and "taken by a teammate (Top)" in lost[0][1], "ally took Pantheon -> alert names their role, not their name")
 
 # ------------------------------------------------------------ 3. League Classic id preferred over modern id
 cfg, lcu, w, sent = make()
@@ -311,7 +311,19 @@ lcu.team[ME]["assignedPosition"] = "jungle"  # autofilled into 2nd preference
 w.tick()
 check(w.snapshot()["cs"]["aegis"] is None and w.game_context["aegis"] is False, "2nd preference -> no Aegis")
 
-# ------------------------------------------------------------ 7. not your turn
+# ------------------------------------------------------------ 7. SAFETY
+cfg, lcu, w, sent = make()
+w.tick()
+blob = json.dumps(w.snapshot())
+check(not any(f"P{c}" in blob for c in range(5)), "SAFETY: teammate names never reach the page in champ select")
+check([p["name"] for p in w.snapshot()["cs"]["team"]] == ["Top", "Jungle", "Mid", "Bot", "Support"],
+      "teammates shown by role")
+cfg, lcu, w, sent = make({"auto_accept": True})  # old config from an earlier version
+w.on_phase_change("Matchmaking", "ReadyCheck", {})
+check(not any("ready-check/accept" in c[1] for c in lcu.calls) and sent[-1][0] == "MATCH FOUND!",
+      "SAFETY: never accepts on its own, even with an old auto_accept config")
+
+# ------------------------------------------------------------ 8. not your turn
 cfg, lcu, w, sent = make()
 lcu.actions[0][0]["isInProgress"] = False
 try:

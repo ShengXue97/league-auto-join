@@ -1,6 +1,10 @@
 """
 League Remote Accept
 --------------------
+Safety rule: League Remote never acts on its own. It only reads, and every action
+(accept, pick, ban, swap, reconnect) is a button you press. Riot's Terms of Service
+forbid automation that takes actions on your behalf, so there is no auto-accept.
+
 Watches the League client for "Match Found", pushes a notification to your
 phone (via ntfy.sh) with ACCEPT / DECLINE buttons, and serves a small phone
 control page on your home Wi-Fi. Optional auto-accept toggle.
@@ -38,7 +42,7 @@ import autostart
 import ingame
 import rank
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -91,7 +95,6 @@ def load_config():
         "ntfy_topic": "league-" + secrets.token_hex(5),
         "ntfy_server": "https://ntfy.sh",
         "port": 5000,
-        "auto_accept": False,
         "notify_champ_select": True,
         "notify_requeue": True,
         "notify_your_turn": True,
@@ -359,7 +362,6 @@ class Watcher:
         s["startup"] = autostart.startup_installed()
         e = self.rank_entry
         s["rank_line"] = f"{rank.describe(e['pos'])['text']} · {e['wins']}W {e['losses']}L" if e else None
-        s["auto_accept"] = self.cfg["auto_accept"]
         s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
                           "ban": list(self.cfg.get("favorite_bans", []))}
         s["last_event"] = self.last_event
@@ -534,7 +536,9 @@ class Watcher:
                 "champ": p.get("championId") or p.get("championPickIntent") or 0,
                 "locked": cell in locked_cells,
                 "pos": (p.get("assignedPosition") or "").lower(),
-                "name": p.get("gameName") or "",
+                # Riot hides names in ranked champ select; apps must not reveal them
+                "name": rank.ROLE_NAMES.get((p.get("assignedPosition") or "").upper())
+                        or (f"Ally #{pick_rank[cell]}" if cell in pick_rank else "Ally"),
                 "me": cell == me,
                 "order": pick_rank.get(cell),
                 "swap_id": sw.get("id"),
@@ -660,7 +664,7 @@ class Watcher:
         if not lost:
             return
         self.fav_lost.update(f["id"] for f in lost)
-        what = {"banned": "was banned", "ally": "was picked by {by}", "enemy": "was picked by the enemy"}
+        what = {"banned": "was banned", "ally": "was taken by a teammate ({by})", "enemy": "was picked by the enemy"}
         text = "; ".join(f"{f['name']} {what[f['status']].format(by=f['by'])}" for f in lost)
         nxt = next((f for f in favs if f["status"] in ("mine", "available")), None)
         self.event(text)
@@ -987,15 +991,8 @@ class Watcher:
 
     def on_phase_change(self, old, new, st):
         if new == "ReadyCheck":
-            if self.cfg["auto_accept"]:
-                self.lcu.accept()
-                self.event("Match found - auto-accepted")
-                self.notifier.send("Match accepted automatically",
-                                   "Champ select is coming - head back!",
-                                   priority=5, tags=["white_check_mark", "video_game"])
-            else:
-                self.event("Match found - waiting for your answer")
-                self.notifier.match_found()
+            self.event("Match found - waiting for your answer")
+            self.notifier.match_found()
         elif old == "ReadyCheck" and new == "Matchmaking":
             self.event("Ready check failed - back in queue")
             if self.cfg["notify_requeue"]:
@@ -1147,15 +1144,6 @@ def make_handler(cfg, lcu, watcher):
                 elif url.path == "/api/reconnect":
                     lcu.request("POST", "/lol-gameflow/v1/reconnect")
                     watcher.event("Reconnect requested from phone")
-                elif url.path == "/api/auto":
-                    on = q.get("on", [""])[0]
-                    cfg["auto_accept"] = (on == "1") if on else not cfg["auto_accept"]
-                    save_config(cfg)
-                    watcher.event(f"Auto-accept {'ON' if cfg['auto_accept'] else 'OFF'}")
-                    # Match already popped? act on it now
-                    if cfg["auto_accept"] and watcher.snapshot().get("phase") == "ReadyCheck":
-                        lcu.accept()
-                        watcher.event("Accepted (auto-accept switched on during ready check)")
                 else:
                     return self._json(404, {"error": "not found"})
             except ConnectionError as e:
@@ -1235,7 +1223,6 @@ def main():
     print(f" Phone control page : {control_url}")
     print(f" ntfy topic         : {cfg['ntfy_topic']}")
     print(f"   -> install the 'ntfy' app on your phone and subscribe to it")
-    print(f" Auto-accept        : {'ON' if cfg['auto_accept'] else 'OFF'}")
     print(f" Start with Windows : {'ON' if autostart.startup_installed() else 'OFF'}"
           f"{'  (running hidden, log: league_remote.log)' if '--background' in args else ''}")
     print(" Phone must be on the same Wi-Fi as this PC. Ctrl+C to quit.")

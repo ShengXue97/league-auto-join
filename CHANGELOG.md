@@ -3,6 +3,20 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.7.0] - 2026-09-24
+### Removed
+- Auto-accept. Riot's Terms of Service (7.1) forbid automation programs and Riot
+  support names "taking actions on your behalf" as bannable. Accepting is now
+  always your own tap (notification button or phone page). An old
+  `auto_accept` setting in config.json is ignored.
+
+### Changed
+- Champ select never shows teammates' names, only their role (or "Ally #n").
+  Riot hides names in ranked champ select to prevent dodging, and apps must not
+  reveal them.
+- README safety section updated with Riot's Terms of Service, developer policy
+  and Vanguard FAQ.
+
 ## [1.6.0] - 2026-09-24
 ### Added
 - Start with Windows: League Remote starts hidden (no console window) when you

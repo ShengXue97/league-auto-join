@@ -306,15 +306,6 @@
     <div class="card">
       <div class="row">
         <div>
-          <div><b>Auto-accept</b></div>
-          <div class="hint">Accept instantly and just notify me</div>
-        </div>
-        <button class="toggle" id="auto" aria-label="Toggle auto-accept"></button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="row">
-        <div>
           <div><b>Start with Windows</b></div>
           <div class="hint">Runs hidden in the background when you log in. Opening League Remote again restarts it.</div>
         </div>
@@ -510,7 +501,7 @@ function renderChampSelect(cs) {
     <div class="player${p.me ? " me" : ""}">
       <div class="ord">${p.order ? "#" + +p.order : ""}</div>
       ${icon(p.champ)}
-      <div class="ellipsis">${p.me ? "You" : esc(p.name || "Ally")}${p.pos ? ` · ${esc(p.pos)}` : ""}<br>
+      <div class="ellipsis">${p.me ? "You" : esc(p.name || "Ally")}${p.me && p.pos ? ` · ${esc(p.pos)}` : ""}<br>
         <small>${esc(champName(p.champ) || "—")}</small></div>
       <div style="margin-left:auto">${right}</div>
     </div>`;
@@ -634,7 +625,6 @@ let lastPhase = null;
 function render(s) {
   $("dot").classList.toggle("ok", !!s.connected);
   $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
-  $("auto").classList.toggle("on", !!s.auto_accept);
   $("startup").classList.toggle("on", !!s.startup);
   $("log").textContent = s.last_event || "";
   if (s.version) $("version").textContent = `v${s.version}`;
@@ -892,7 +882,6 @@ async function call(method, path) {
 $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("reconnect").onclick = () => call("POST", "/api/reconnect");
-$("auto").onclick = () => call("POST", "/api/auto");
 $("startup").onclick = () => call("POST", "/api/startup");
 $("grid").onclick = e => {
   const b = e.target.closest(".champ");

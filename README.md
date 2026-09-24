@@ -22,7 +22,6 @@ the running one, hidden or not. `stop.bat` stops it.
 | When | Notification |
 |---|---|
 | Match found | Loud alert with ACCEPT / DECLINE buttons (~10s to tap) |
-| Match found + auto-accept ON | "Accepted automatically, head back" |
 | Someone else declined | Quiet "Back in queue" |
 | Champ select starts | Loud "Get back!" with seconds left |
 | Your turn to pick / ban | Loud alert + up to 2 one-tap favorite buttons |
@@ -91,13 +90,20 @@ Works on phone, tablet and desktop browsers.
 - Shows nothing you can't already see in game: no enemy cooldown, ultimate,
   summoner spell, jungle or respawn timers, no enemy gold estimates.
   `tests/test_ingame.py` checks this.
-- Never picks, bans, swaps or accepts on its own unless you turn on auto-accept.
+- Never acts on its own: accepting, picking, banning, swapping and reconnecting are
+  always your own tap. Riot's Terms of Service (7.1) forbid "automation programs",
+  and Riot support names "taking actions on your behalf" - so there is no auto-accept.
+- Never shows teammates' names in champ select (Riot hides them in ranked champ
+  select to prevent dodging; apps must not reveal them) - teammates show as roles.
+- Not registered with Riot as an app. Riot's developer policy asks apps using the
+  League client API to register; tools like this are widely used without bans, but
+  that can't be guaranteed.
 
 ## Notes
 - Your phone must be on the same Wi-Fi as the PC for the buttons to work.
-- `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
+- `config.json` settings: `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
 - Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py`, `python tests/test_rank.py` and `python tests/test_autostart.py` (simulated, no client needed).
-- If you miss champ select you dodge (queue lockout, and LP loss in ranked), so only turn on auto-accept if you'll be back in time.
+- If you miss champ select you dodge (queue lockout, SP loss), so only accept when you'll be back in time.
 
 ## Versions
 The version is shown in the startup window and at the bottom of the phone page.
