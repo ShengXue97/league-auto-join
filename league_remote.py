@@ -42,7 +42,7 @@ import autostart
 import ingame
 import rank
 
-__version__ = "1.7.2"
+__version__ = "1.7.3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -326,6 +326,8 @@ class Watcher:
         self.history_cache = ingame.HistoryCache(HISTORY_CACHE_PATH)
         self.history = []          # official match history records, oldest first
         self._team_kills = {}      # game id -> my team's kills (for kill participation)
+        self._my_puuid = None
+        self._direct_tried = set()  # finished games fetched by id before Riot's list had them
         self.rank_entry = None     # current Classic rank from the client
         self.ladder = None         # {"position", "size"} in my division's league
         self.pending_result = None  # finished game waiting for its SP change
@@ -782,12 +784,17 @@ class Watcher:
     # ------------------------------------------------ history + rank (background)
 
     def background_loop(self):
-        """Match history and rank refresh: every minute, every 5s right after a game."""
+        """Rank: every minute, every 5 s right after a game (to catch the SP change).
+        Match history list: every 5 minutes only - a just-finished game is fetched by id,
+        and Riot adds it to the recent-games list a few minutes later anyway."""
+        history_next = 0
         while True:
             now = time.time()
             if now >= self._bg_next or now < self._watch_rank_until:
                 try:
-                    self.refresh_history_and_rank()
+                    self.refresh_history_and_rank(with_list=now >= history_next)
+                    if now >= history_next:
+                        history_next = now + 300
                 except (ConnectionError, urllib.error.HTTPError):
                     pass
                 except Exception as e:
@@ -796,7 +803,11 @@ class Watcher:
             self.check_pending_timeout()
             time.sleep(5)
 
-    def refresh_history_and_rank(self):
+    def refresh_history_and_rank(self, with_list=True):
+        if not with_list:  # quick rank check; add the finished game by id if needed
+            self.add_finished_games([])
+            self.update_rank()
+            return
         resp = self.lcu.request("GET", "/lol-match-history/v1/products/lol/current-summoner/matches"
                                        "?begIndex=0&endIndex=100", timeout=30)
         games = ((resp or {}).get("games") or {}).get("games") or []
@@ -807,7 +818,10 @@ class Watcher:
                 self._team_kills[gid] = ingame.team_kills_from_game(full, g["participants"][0].get("participantId"))
         fresh = ingame.records_from_history(resp, lambda cid: self.champions().get(cid), self._team_kills)
         self.history = self.history_cache.merge(fresh)
+        self.add_finished_games(games)
+        self.update_rank()
 
+    def update_rank(self):
         entry = rank.entry_from_ranked_stats(self.lcu.request("GET", "/lol-ranked/v1/current-ranked-stats", timeout=10))
         self.rank_entry = entry
         if entry:
@@ -825,6 +839,37 @@ class Watcher:
             self.game_context = None
         if change:
             self.on_rank_change(change)
+
+    def add_finished_games(self, listed):
+        """Games League Remote saw end but Riot's recent-games list doesn't show yet:
+        fetch them by id (Riot already has them) so Stats is up to date right away."""
+        have = {r["id"] for r in self.history} | {str(g.get("gameId")) for g in listed}
+        with self._pending_lock:
+            pending = self.pending_result
+        wanted = {c.get("game_id") for c in self.rank.changes()[-5:]}
+        wanted |= {pending["rec"]["id"]} if pending else set()
+        wanted |= {str(self.game_id)} if self.game_id else set()
+        wanted = {w for w in wanted if w and w.isdigit() and w not in have and w not in self._direct_tried}
+        if not wanted:
+            return
+        if not self._my_puuid:
+            self._my_puuid = (self.lcu.request("GET", "/lol-summoner/v1/current-summoner") or {}).get("puuid")
+        entries = []
+        for gid in wanted:
+            try:
+                game = self.lcu.request("GET", f"/lol-match-history/v1/games/{gid}", timeout=10)
+            except urllib.error.HTTPError:
+                continue  # not on Riot's side yet: try again next refresh
+            entry = ingame.history_entry_from_game(game, self._my_puuid)
+            if entry:
+                self._direct_tried.add(gid)
+                self._team_kills[gid] = ingame.team_kills_from_game(game, entry["participants"][0]["participantId"])
+                entries.append(entry)
+        if entries:
+            recs = ingame.records_from_history({"games": {"games": entries}},
+                                               lambda cid: self.champions().get(cid), self._team_kills)
+            self.history = self.history_cache.merge(recs)
+            log(f"Added {len(recs)} finished game(s) that Riot's recent-games list doesn't show yet")
 
     def ladder_position(self):
         try:

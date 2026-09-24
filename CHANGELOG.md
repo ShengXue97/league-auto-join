@@ -3,6 +3,17 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.7.3] - 2026-09-25
+### Added
+- A game League Remote saw end is fetched from Riot by its id and shown in Stats
+  right away, even while Riot's recent-games list hasn't added it yet (seen on a
+  real game: the list caught up about 5 minutes after the game ended).
+
+### Changed
+- Much less match-history traffic: the recent-games list is read every 5 minutes
+  (was every minute, and every 5 s for 4 minutes after each game). Right after a
+  game only your rank is checked quickly.
+
 ## [1.7.2] - 2026-09-25
 ### Fixed
 - SP change credited to the wrong game: Riot adds a finished game to the match

@@ -302,6 +302,21 @@ class HistoryCache:
         return out
 
 
+def history_entry_from_game(game, puuid):
+    """Full game (/lol-match-history/v1/games/{id}) -> the list-entry shape, for my player.
+    Riot adds games to the recent-games list minutes after the game itself is available."""
+    ident = next((i for i in (game or {}).get("participantIdentities") or []
+                  if (i.get("player") or {}).get("puuid") == puuid), None)
+    if not ident:
+        return None
+    me = next((p for p in game.get("participants") or [] if p.get("participantId") == ident["participantId"]), None)
+    if not me:
+        return None
+    entry = {k: game.get(k) for k in ("gameId", "gameMode", "queueId", "gameDuration", "gameCreation")}
+    entry["participants"] = [me]
+    return entry
+
+
 def team_kills_from_game(game, participant_id):
     """Full game from /lol-match-history/v1/games/{id} -> kills of that player's team."""
     parts = (game or {}).get("participants") or []

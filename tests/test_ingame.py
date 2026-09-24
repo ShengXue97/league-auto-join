@@ -132,7 +132,9 @@ pan = st["champions"][0]
 check(pan["champ"] == "Pantheon" and pan["fav"] and pan["games"] == 4 and pan["wr"] == 75, "per-champion, favorite first")
 check(st["recent"][0]["champ"] == "Ahri" and len(st["trend"]) == 5, "recent newest first, trend")
 check(ingame.compute_stats([])["wr"] is None, "empty history")
-team = {"participants": [{"participantId": 1, "teamId": 100, "stats": {"kills": 5}},
+team = {"participants": [{"participantId": 1, "teamId": 100, "championId": 60080,
+                          "stats": {"kills": 5, "deaths": 1, "assists": 3, "win": True,
+                                    "totalMinionsKilled": 150, "neutralMinionsKilled": 10}},
                          {"participantId": 2, "teamId": 100, "stats": {"kills": 7}},
                          {"participantId": 6, "teamId": 200, "stats": {"kills": 9}}]}
 check(ingame.team_kills_from_game(team, 1) == 12, "team kills from full game")
@@ -192,7 +194,11 @@ class FakeLCU:
         if path.startswith("/lol-match-history/v1/products/lol/current-summoner/matches"):
             return self.history
         if path.startswith("/lol-match-history/v1/games/"):
-            return team
+            gid = int(path.rsplit("/", 1)[-1])
+            return {**team, "gameId": gid, "gameMode": "JADE", "queueId": 4310, "gameDuration": 1713,
+                    "gameCreation": 1_700_000_900_000,
+                    "participantIdentities": [{"participantId": 1, "player": {"puuid": "me"}},
+                                              {"participantId": 2, "player": {"puuid": "someone"}}]}
         if path == "/lol-ranked/v1/current-ranked-stats":
             return {"queueMap": {"JADE_RANKED_SOLO_5x5": dict(self.ranked)}}
         if path == "/lol-summoner/v1/current-summoner":
@@ -275,7 +281,26 @@ w.refresh_history_and_rank()
 c = w.rank.changes()[-1]
 check(c["game_id"] == "556" and c["delta"] == 22,
       f"SP change linked to the game that just ended, not the newest history game ({c['game_id']})")
-check(all(r["id"] != "556" for r in w.history), "(history really didn't have the new game yet)")
+listed = {str(g["gameId"]) for g in lcu.history["games"]["games"]}
+new = next((r for r in w.history if r["id"] == "556"), None)
+check("556" not in listed and new and new["champ"] == "Pantheon" and new["win"] and new["kp"] == 67,
+      "game missing from Riot's recent list is fetched by id and shown in Stats")
+w.refresh_history_and_rank()
+check(sum(r["id"] == "556" for r in w.history) == 1, "added once, no duplicates")
+
+# quick after-game checks read the rank only, never the recent-games list
+cfg, lcu, w, sent = make()
+w.refresh_history_and_rank()
+seen = []
+orig = lcu.request
+lcu.request = lambda m, path, body=None, timeout=3: (seen.append(path), orig(m, path, body, timeout))[1]
+lcu.ranked.update(leaguePoints=40, wins=61)
+w.pending_result = {"rec": {"id": "557", "champ": "Pantheon", "win": True, "k": 1, "d": 1, "a": 1, "cs_min": 5,
+                            "kp": None}, "at": __import__("time").time()}
+w.refresh_history_and_rank(with_list=False)
+check(not any("current-summoner/matches" in p for p in seen), "quick check doesn't poll the match history list")
+check(w.rank.changes()[-1]["game_id"] == "557" and any(r["id"] == "557" for r in w.history),
+      "quick check still records the SP change and adds the finished game by id")
 
 # Aegis-role win: alert names the role and bonus
 w.send_result(None, {"delta": 40, "win": True, "games": 1, "pref": 5, "role": "UTILITY", "after": {"pos": 1983}})
@@ -345,8 +370,9 @@ check(req("GET", "/item/42")[0] == 404, "unknown item 404")
 w.refresh_history_and_rank()
 code, body = req("GET", "/api/stats")
 data = json.loads(body)
-check(code == 200 and data["games"] == 5 and data["rank"]["rank"]["emblem"] == "Platinum" and data["loaded"], "/api/stats")
-check(data["season"] == {"wins": 60, "losses": 54, "wr": 53} and data["games"] == 5,
+# 5 listed games + game 555 (the one this watcher saw, fetched by id) = 6
+check(code == 200 and data["games"] == 6 and data["rank"]["rank"]["emblem"] == "Platinum" and data["loaded"], "/api/stats")
+check(data["season"] == {"wins": 60, "losses": 54, "wr": 53} and data["games"] == 6,
       "stats separate the full season record (rank data) from games with details")
 check(data["span"]["first"] <= data["span"]["last"], "stats say which dates the detailed games cover")
 srv.shutdown()
