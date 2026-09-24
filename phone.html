@@ -41,6 +41,35 @@
   .log { color: var(--muted); font-size: 13px; text-align: center; min-height: 1.2em; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: middle; }
   .dot.ok { background: var(--green); }
+  [hidden] { display: none !important; }
+
+  /* champion select */
+  .turn { text-align: center; font-weight: 700; font-size: 18px; padding: 12px; border-radius: 8px; background: #1e2328; }
+  .turn.now { background: #0ac8b933; border: 2px solid var(--blue); animation: pulse 1s infinite; }
+  .turn.ban.now { background: #e8405733; border-color: var(--red); }
+  .label { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 8px; }
+  .team { display: flex; flex-direction: column; gap: 6px; }
+  .player { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+  .player.me { color: var(--gold); font-weight: 700; }
+  .player .st { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .player .st.locked { color: var(--green); }
+  .icon { width: 36px; height: 36px; border-radius: 4px; background: #1e2328; object-fit: cover; flex: none; }
+  .icons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .icons .icon { width: 30px; height: 30px; }
+  .icons .ban { filter: grayscale(1); opacity: .7; }
+  input[type=search] {
+    width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 8px;
+    border: 1px solid var(--gold-dim); background: #010a13; color: var(--text);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin-top: 12px; max-height: 46vh; overflow-y: auto; }
+  .champ { border: 2px solid transparent; border-radius: 6px; padding: 2px; background: none; text-align: center; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--text); }
+  .champ img { width: 100%; aspect-ratio: 1; border-radius: 4px; display: block; background: #1e2328; }
+  .champ span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .champ.sel { border-color: var(--gold); }
+  .champ.fav span::before { content: "★ "; color: var(--gold); }
+  #lock { width: 100%; border-color: var(--blue); background: #0ac8b922; }
+  #lock.ban { border-color: var(--red); background: #e8405722; }
+  .empty { color: var(--muted); text-align: center; grid-column: 1 / -1; padding: 12px; }
 </style>
 </head>
 <body>
@@ -53,10 +82,36 @@
     <div class="sub" id="sub"></div>
   </div>
 
-  <div class="btns">
+  <div class="btns" id="queueBtns">
     <button id="accept" disabled>ACCEPT</button>
     <button id="decline" disabled>DECLINE</button>
   </div>
+
+  <section id="cs" hidden>
+    <div class="wrap">
+      <div class="turn" id="turn"></div>
+
+      <div class="card">
+        <div class="label">Your team</div>
+        <div class="team" id="team"></div>
+        <div id="bansBox" hidden>
+          <div class="label" style="margin-top:14px">Bans</div>
+          <div class="icons" id="bans"></div>
+        </div>
+        <div id="enemyBox" hidden>
+          <div class="label" style="margin-top:14px">Enemy picks</div>
+          <div class="icons" id="enemies"></div>
+        </div>
+      </div>
+
+      <div class="card" id="pickerCard">
+        <input type="search" id="search" placeholder="Search champion…" autocomplete="off">
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <button id="lock" disabled>CHOOSE A CHAMPION</button>
+    </div>
+  </section>
 
   <div class="card">
     <div class="row">
@@ -80,12 +135,100 @@ const NAMES = {
   WaitingForStats: "Post Game", PreEndOfGame: "Post Game", EndOfGame: "Post Game",
   Reconnect: "Reconnect Needed",
 };
+const CS_PHASES = { PLANNING: "Declare your pick", BAN_PICK: "Bans & picks", FINALIZATION: "Final phase" };
+
+let champs = {};          // id -> name
+let favorites = new Set(); // champion names from config
+let selected = 0;         // champion chosen on this page
+let lastGridKey = "";
+let lastCs = null;
+
+const icon = (id, cls = "icon") => id ? `<img class="${cls}" loading="lazy" src="/icon/${id}" alt="">` : `<span class="${cls}"></span>`;
+const champName = id => champs[id] || (id ? `#${id}` : "");
+
+async function loadChamps() {
+  try {
+    const r = await fetch("/api/champs", { cache: "no-store" });
+    if (r.ok) for (const c of await r.json()) champs[c.id] = c.name;
+  } catch (e) { /* retried on next champ select render */ }
+}
+
+function renderChampSelect(cs) {
+  lastCs = cs;
+  const act = cs.action;
+  const isBan = act && act.type === "ban";
+  if (!Object.keys(champs).length) loadChamps();
+
+  // banner
+  const turn = $("turn");
+  turn.className = "turn" + (isBan ? " ban" : "") + (act && act.in_progress ? " now" : "");
+  turn.textContent = act && act.in_progress ? `YOUR TURN TO ${isBan ? "BAN" : "PICK"}!`
+    : act ? `Your ${isBan ? "ban" : "pick"} is coming up`
+    : cs.done ? "✔ You're locked in" : "Waiting for others…";
+
+  // team
+  $("team").innerHTML = cs.team.map(p => `
+    <div class="player${p.me ? " me" : ""}">
+      ${icon(p.champ)}
+      <div>${p.me ? "You" : (p.name || "Ally")}${p.pos ? ` · ${p.pos}` : ""}<br>
+        <small>${champName(p.champ) || "—"}</small></div>
+      <div class="st${p.locked ? " locked" : ""}">${p.locked ? "Locked" : p.champ ? "Hovering" : ""}</div>
+    </div>`).join("");
+  $("bansBox").hidden = !cs.bans.length;
+  $("bans").innerHTML = cs.bans.map(id => icon(id, "icon ban")).join("");
+  const enemies = cs.enemies.filter(Boolean);
+  $("enemyBox").hidden = !enemies.length;
+  $("enemies").innerHTML = enemies.map(id => icon(id)).join("");
+
+  // picker
+  $("pickerCard").hidden = !act;
+  // start from whatever is already hovered/declared in the client
+  const meP = cs.team.find(p => p.me);
+  if (act && !selected) selected = act.champ || (meP && !meP.locked && meP.champ) || 0;
+  renderGrid(cs);
+
+  const lock = $("lock");
+  lock.hidden = !act;
+  lock.className = isBan ? "ban" : "";
+  const ok = act && act.in_progress && selected && cs.choices.includes(selected);
+  lock.disabled = !ok;
+  lock.textContent = !selected ? "CHOOSE A CHAMPION"
+    : !act || !act.in_progress ? `${champName(selected)} (wait for your turn)`
+    : `${isBan ? "BAN" : "LOCK IN"} ${champName(selected).toUpperCase()}`;
+}
+
+function renderGrid(cs) {
+  const q = $("search").value.trim().toLowerCase();
+  const key = [cs.choices.join(","), q, selected, Object.keys(champs).length].join("|");
+  if (key === lastGridKey) return; // keep scroll position between polls
+  lastGridKey = key;
+
+  const list = cs.choices
+    .map(id => ({ id, name: champName(id) }))
+    .filter(c => !q || c.name.toLowerCase().includes(q))
+    .sort((a, b) => (favorites.has(b.name.toLowerCase()) - favorites.has(a.name.toLowerCase())) || a.name.localeCompare(b.name));
+  $("grid").innerHTML = list.length ? list.map(c => `
+    <button class="champ${c.id === selected ? " sel" : ""}${favorites.has(c.name.toLowerCase()) ? " fav" : ""}" data-id="${c.id}">
+      ${icon(c.id, "")}<span>${c.name}</span>
+    </button>`).join("") : `<div class="empty">No champions match</div>`;
+}
+
+$("grid").onclick = e => {
+  const b = e.target.closest(".champ");
+  if (!b) return;
+  selected = +b.dataset.id;
+  if (lastCs) renderChampSelect(lastCs);
+  call("POST", `/api/cs/hover?champ=${selected}`); // shows your choice to teammates
+};
+$("search").oninput = () => lastCs && renderGrid(lastCs);
+$("lock").onclick = () => call("POST", `/api/cs/lock?champ=${selected}`);
 
 function render(s) {
   $("dot").classList.toggle("ok", !!s.connected);
   $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
   $("auto").classList.toggle("on", !!s.auto_accept);
   $("log").textContent = s.last_event || "";
+  if (s.favorites) favorites = new Set(s.favorites.map(n => n.toLowerCase()));
 
   let clock = "", sub = "";
   if (s.phase === "Matchmaking") {
@@ -97,15 +240,22 @@ function render(s) {
         : s.my_response === "Declined" ? "✖ You declined" : "Tap ACCEPT now!";
   } else if (s.phase === "ChampSelect") {
     clock = s.cs_time_left != null ? s.cs_time_left + "s" : "";
-    sub = s.cs_phase ? `Phase: ${s.cs_phase} — get back!` : "Get back!";
+    sub = CS_PHASES[s.cs_phase] || s.cs_phase || "";
   }
   $("clock").textContent = clock;
   $("sub").textContent = sub;
 
+  const inCs = s.phase === "ChampSelect" && s.cs;
+  $("cs").hidden = !inCs;
+  $("queueBtns").hidden = !["Matchmaking", "ReadyCheck"].includes(s.phase);
+  if (inCs) renderChampSelect(s.cs);
+  else { selected = 0; lastCs = null; lastGridKey = ""; }
+
   const canAnswer = s.phase === "ReadyCheck" && s.my_response === "None";
   $("accept").disabled = $("decline").disabled = !canAnswer;
   $("app").classList.toggle("ready", s.phase === "ReadyCheck");
-  document.title = s.phase === "ReadyCheck" ? "⚠ MATCH FOUND" : "League Remote";
+  document.title = s.phase === "ReadyCheck" ? "⚠ MATCH FOUND"
+    : inCs && s.cs.action && s.cs.action.in_progress ? "⚠ YOUR TURN" : "League Remote";
 }
 
 async function call(method, path) {
@@ -124,6 +274,7 @@ $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("auto").onclick = () => call("POST", "/api/auto");
 
+loadChamps();
 call("GET", "/api/status");
 setInterval(() => call("GET", "/api/status"), 1000);
 </script>

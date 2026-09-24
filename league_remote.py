@@ -5,6 +5,9 @@ Watches the League client for "Match Found", pushes a notification to your
 phone (via ntfy.sh) with ACCEPT / DECLINE buttons, and serves a small phone
 control page on your home Wi-Fi. Optional auto-accept toggle.
 
+Champion select: pick and ban from your phone. Nothing is ever picked or
+banned automatically - every choice and lock-in is your own tap.
+
 Standard library only. Run:  python league_remote.py
 """
 
@@ -72,6 +75,10 @@ def load_config():
         "auto_accept": False,
         "notify_champ_select": True,
         "notify_requeue": True,
+        "notify_your_turn": True,
+        # Champion names shown as one-tap buttons in the "your turn" notification
+        "favorite_picks": [],
+        "favorite_bans": [],
         "lockfile": "",
     }
     for k, v in defaults.items():
@@ -163,6 +170,20 @@ class LCU:
             self.base = None  # client restarted -> re-read lockfile next time
             raise ConnectionError(str(e))
 
+    def raw(self, path):
+        """Fetch non-JSON content (champion icons)."""
+        if not self.base and not self.connect():
+            raise ConnectionError("League client not running")
+        req = urllib.request.Request(self.base + path, headers={"Authorization": self.auth})
+        try:
+            with urllib.request.urlopen(req, context=_INSECURE, timeout=5) as r:
+                return r.read(), r.headers.get("Content-Type", "image/png")
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, OSError) as e:
+            self.base = None
+            raise ConnectionError(str(e))
+
     def accept(self):
         return self.request("POST", "/lol-matchmaking/v1/ready-check/accept")
 
@@ -217,6 +238,19 @@ class Notifier:
         )
 
 
+    def your_turn(self, kind, seconds, favorites):
+        """kind: 'pick' or 'ban'. favorites: [(champ_id, name)] that are available now."""
+        verb = "Lock" if kind == "pick" else "Ban"
+        actions = [{"action": "view", "label": "Open", "url": self.control_url, "clear": True}]
+        for cid, name in favorites[:2]:
+            actions.append({"action": "http", "label": f"{verb} {name}", "method": "POST",
+                            "clear": True, "url": f"{self.control_url}/api/cs/lock?champ={cid}"})
+        left = f" - {seconds}s left" if seconds else ""
+        self.send(f"YOUR TURN TO {kind.upper()}{left}",
+                  "Open the page to choose, or tap a favorite.",
+                  priority=5, tags=["rotating_light", "crossed_swords"], actions=actions)
+
+
 # ---------------------------------------------------------------- watcher
 
 class Watcher:
@@ -228,11 +262,14 @@ class Watcher:
         self.status = {"connected": False, "phase": "Unknown"}
         self.last_phase = None
         self.last_event = ""
+        self.notified_action = None
+        self._champs = {}  # id -> name
 
     def snapshot(self):
         with self.lock:
             s = dict(self.status)
         s["auto_accept"] = self.cfg["auto_accept"]
+        s["favorites"] = list(self.cfg.get("favorite_picks", [])) + list(self.cfg.get("favorite_bans", []))
         s["last_event"] = self.last_event
         return s
 
@@ -270,11 +307,13 @@ class Watcher:
             st["my_response"] = rc.get("playerResponse")
             st["ready_timer"] = rc.get("timer")
         if phase == "ChampSelect":
-            cs = self.lcu.request("GET", "/lol-champ-select/v1/session") or {}
-            timer = cs.get("timer") or {}
-            st["cs_phase"] = timer.get("phase")
-            left = timer.get("adjustedTimeLeftInPhase")
-            st["cs_time_left"] = round(left / 1000) if isinstance(left, (int, float)) else None
+            cs = self.champ_select_state()
+            st["cs"] = cs
+            st["cs_phase"] = cs.get("phase")
+            st["cs_time_left"] = cs.get("time_left")
+            self.maybe_notify_turn(cs)
+        else:
+            self.notified_action = None
 
         with self.lock:
             was_connected = self.status.get("connected")
@@ -288,6 +327,107 @@ class Watcher:
             self.last_phase = phase
         elif phase not in ("None", "Lobby", "Matchmaking", "InProgress"):
             self.record_changes(phase)
+
+    # ------------------------------------------------ champion select
+
+    def champions(self):
+        """id -> name for every champion the client knows (incl. League Classic 600xx ids)."""
+        if not self._champs:
+            data = self.lcu.request("GET", "/lol-game-data/assets/v1/champion-summary.json") or []
+            self._champs = {c["id"]: c["name"] for c in data if c.get("id", 0) > 0}
+        return self._champs
+
+    def champ_select_state(self):
+        s = self.lcu.request("GET", "/lol-champ-select/v1/session") or {}
+        me = s.get("localPlayerCellId")
+
+        timer = s.get("timer") or {}
+        left = timer.get("adjustedTimeLeftInPhase")
+        if isinstance(left, (int, float)):
+            # the value is relative to internalNowInEpochMs, not to "now"
+            since = timer.get("internalNowInEpochMs")
+            if isinstance(since, (int, float)) and since > 0:
+                left -= max(0, time.time() * 1000 - since)
+            left = max(0, round(left / 1000))
+        else:
+            left = None
+
+        actions = [a for group in (s.get("actions") or []) for a in group]
+        mine = [a for a in actions if a.get("actorCellId") == me and not a.get("completed")]
+        current = next((a for a in mine if a.get("isInProgress")), None)
+        target = current or (mine[0] if mine else None)
+        locked_cells = {a.get("actorCellId") for a in actions
+                        if a.get("type") == "pick" and a.get("completed")}
+
+        def player(p):
+            return {
+                "cell": p.get("cellId"),
+                "champ": p.get("championId") or p.get("championPickIntent") or 0,
+                "locked": p.get("cellId") in locked_cells,
+                "pos": (p.get("assignedPosition") or "").lower(),
+                "name": p.get("gameName") or "",
+                "me": p.get("cellId") == me,
+            }
+
+        choices = []
+        if target:
+            ep = "bannable" if target.get("type") == "ban" else "pickable"
+            choices = self.lcu.request("GET", f"/lol-champ-select/v1/{ep}-champion-ids") or []
+
+        return {
+            "phase": timer.get("phase"),
+            "time_left": left,
+            "action": {
+                "id": target.get("id"),
+                "type": target.get("type"),
+                "in_progress": bool(current),
+                "champ": target.get("championId") or 0,
+            } if target else None,
+            "done": not mine and me in locked_cells,
+            "team": [player(p) for p in s.get("myTeam") or []],
+            "enemies": [p.get("championId") or 0 for p in s.get("theirTeam") or []],
+            "bans": [a.get("championId") for a in actions
+                     if a.get("type") == "ban" and a.get("completed") and a.get("championId")],
+            "choices": choices,
+        }
+
+    def maybe_notify_turn(self, cs):
+        act = cs.get("action")
+        if not act or not act["in_progress"] or act["id"] == self.notified_action:
+            return
+        self.notified_action = act["id"]
+        kind = "ban" if act["type"] == "ban" else "pick"
+        self.event(f"Your turn to {kind}")
+        if not self.cfg.get("notify_your_turn", True):
+            return
+        champs = self.champions()
+        by_name = {n.lower(): i for i, n in champs.items() if i in set(cs.get("choices") or [])}
+        wanted = self.cfg.get("favorite_bans" if kind == "ban" else "favorite_picks") or []
+        favs = [(by_name[n.lower()], champs[by_name[n.lower()]])
+                for n in map(str, wanted) if n.lower() in by_name]
+        self.notifier.your_turn(kind, cs.get("time_left"), favs)
+
+    def cs_act(self, champ_id, lock):
+        """Hover (lock=False) or lock in / ban (lock=True) a champion for my current action."""
+        cs = self.champ_select_state()
+        act = cs.get("action")
+        if not act:
+            raise ValueError("You have no pick or ban left")
+        if lock and not act["in_progress"]:
+            raise ValueError("It's not your turn yet")
+        champ_id = champ_id or act["champ"]
+        if not champ_id:
+            raise ValueError("Choose a champion first")
+        if champ_id not in (cs.get("choices") or []):
+            raise ValueError("That champion isn't available")
+        path = f"/lol-champ-select/v1/session/actions/{act['id']}"
+        self.lcu.request("PATCH", path, {"championId": champ_id})
+        name = self.champions().get(champ_id, champ_id)
+        if lock:
+            self.lcu.request("POST", path + "/complete")
+            self.event(f"{'Banned' if act['type'] == 'ban' else 'Locked in'} {name} from phone")
+        else:
+            self.event(f"Hovering {name}")
 
     CAPTURE_ENDPOINTS = [
         "/lol-gameflow/v1/session",
@@ -345,7 +485,8 @@ class Watcher:
                                priority=3, tags=["x"])
         elif new == "ChampSelect":
             self.event("Champ select started")
-            if self.cfg["notify_champ_select"]:
+            # skip if a "your turn" alert already went out for this champ select
+            if self.cfg["notify_champ_select"] and self.notified_action is None:
                 left = st.get("cs_time_left")
                 msg = f"~{left}s left in this phase. Get back!" if left else "Get back to your PC!"
                 self.notifier.send("CHAMP SELECT STARTED", msg, priority=5,
@@ -357,6 +498,8 @@ class Watcher:
 # ---------------------------------------------------------------- web server
 
 def make_handler(cfg, lcu, watcher):
+    icon_cache = {}
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -366,6 +509,22 @@ def make_handler(cfg, lcu, watcher):
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _icon(self, cid):
+            if not cid.isdigit():
+                return self._json(404, {"error": "bad id"})
+            if cid not in icon_cache:
+                try:
+                    icon_cache[cid] = lcu.raw(f"/lol-game-data/assets/v1/champion-icons/{cid}.png")
+                except (ConnectionError, urllib.error.HTTPError):
+                    return self._json(404, {"error": "no icon"})
+            body, ctype = icon_cache[cid]
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "max-age=86400")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -382,6 +541,13 @@ def make_handler(cfg, lcu, watcher):
                 self.wfile.write(body)
             elif url.path == "/api/status":
                 self._json(200, watcher.snapshot())
+            elif url.path == "/api/champs":
+                try:
+                    self._json(200, [{"id": i, "name": n} for i, n in watcher.champions().items()])
+                except ConnectionError as e:
+                    self._json(503, {"error": str(e)})
+            elif url.path.startswith("/icon/"):
+                self._icon(url.path.rsplit("/", 1)[-1])
             else:
                 self._json(404, {"error": "not found"})
 
@@ -395,6 +561,14 @@ def make_handler(cfg, lcu, watcher):
                 elif url.path == "/api/decline":
                     lcu.decline()
                     watcher.event("Declined from phone")
+                elif url.path in ("/api/cs/hover", "/api/cs/lock"):
+                    champ = q.get("champ", [""])[0]
+                    try:
+                        watcher.cs_act(int(champ) if champ.isdigit() else 0,
+                                       lock=url.path.endswith("lock"))
+                    except ValueError as e:
+                        watcher.event(f"Phone: {e}")
+                        return self._json(409, {"error": str(e)})
                 elif url.path == "/api/auto":
                     on = q.get("on", [""])[0]
                     cfg["auto_accept"] = (on == "1") if on else not cfg["auto_accept"]
@@ -409,6 +583,9 @@ def make_handler(cfg, lcu, watcher):
             except ConnectionError as e:
                 return self._json(503, {"error": str(e)})
             except urllib.error.HTTPError as e:
+                if url.path.startswith("/api/cs/"):
+                    watcher.event(f"Client refused the champion select action ({e.code})")
+                    return self._json(409, {"error": f"client refused ({e.code})"})
                 watcher.event(f"Phone tapped {url.path.rsplit('/', 1)[-1].upper()} - no match to answer ({e.code})")
                 return self._json(409, {"error": f"client refused ({e.code}) - no active ready check?"})
             self._json(200, watcher.snapshot())
