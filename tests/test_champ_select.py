@@ -13,7 +13,7 @@ import league_remote as lr
 
 ME = 2
 CHAMPS = [{"id": 60001, "name": "Annie"}, {"id": 60080, "name": "Pantheon"},
-          {"id": 60081, "name": "Karthus"}, {"id": 60103, "name": "Ahri"}, {"id": 1, "name": "Annie (modern)"}]
+          {"id": 60081, "name": "Ezreal"}, {"id": 60103, "name": "Ahri"}, {"id": 1, "name": "Annie (modern)"}]
 
 
 class FakeLCU:
