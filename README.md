@@ -50,9 +50,22 @@ in the "your turn" notification when available):
 The **Live** tab becomes a second screen while you play: your KDA, CS/min against
 your goal (`cs_goal` in `config.json`, default 7.0), kill participation, vision,
 gold, items and respawn timer, plus a Tab-style scoreboard and kill feed.
-After each game you get a VICTORY/DEFEAT alert, and the game is saved to
-`matches.jsonl`. The **Stats** tab shows win rate, streaks, CS/min trend and
-per-champion stats.
+After each game you get an alert like "VICTORY +21 SP - now Platinum I 43 SP".
+
+## Rank (Summoner's Journey)
+The **Stats** tab starts with your Classic rank: emblem, division, SP, season
+record and league standing, plus what your next win or loss is worth.
+
+The **climb forecast** shows how many games (and at least how many wins) you
+need for the next division, each emblem and Legend. Drag the win-rate slider,
+or tap recent form / season / your main champion, to see how it changes.
+
+Riot only stores your *current* SP, not what each game gave, so League Remote
+records every change while it runs (`rank_history.jsonl`) and learns your real
+SP per win and loss. Until 3 wins and 3 losses are tracked it assumes +/-20.
+
+Match stats (win rate, champions, CS/min trend, recent games) come from Riot's
+official match history in the client (last ~100 games, Classic only).
 
 Works on phone, tablet and desktop browsers.
 
@@ -69,7 +82,7 @@ Works on phone, tablet and desktop browsers.
 ## Notes
 - Your phone must be on the same Wi-Fi as the PC for the buttons to work.
 - `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
-- Tests: `python tests/test_champ_select.py` and `python tests/test_ingame.py` (simulated, no client needed).
+- Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py` and `python tests/test_rank.py` (simulated, no client needed).
 - If you miss champ select you dodge (queue lockout, and LP loss in ranked), so only turn on auto-accept if you'll be back in time.
 
 ## Versions

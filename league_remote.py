@@ -30,13 +30,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import ingame
+import rank
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
-MATCHES_PATH = os.path.join(HERE, "matches.jsonl")
+RANK_PATH = os.path.join(HERE, "rank_history.jsonl")
+CLASSIC_QUEUE = 4310  # League Classic 5v5 (Summoner's Journey)
 
 DEFAULT_LOCKFILES = [
     r"C:\Riot Games\League of Legends\lockfile",
@@ -158,7 +160,7 @@ class LCU:
         self.auth = "Basic " + base64.b64encode(f"riot:{password}".encode()).decode()
         return True
 
-    def request(self, method, path, body=None):
+    def request(self, method, path, body=None, timeout=3):
         """Returns parsed JSON (or None). Raises ConnectionError if client is unreachable."""
         if not self.base and not self.connect():
             raise ConnectionError("League client not running")
@@ -169,7 +171,7 @@ class LCU:
         if data is not None:
             req.add_header("Content-Type", "application/json")
         try:
-            with urllib.request.urlopen(req, context=_INSECURE, timeout=3) as r:
+            with urllib.request.urlopen(req, context=_INSECURE, timeout=timeout) as r:
                 raw = r.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as e:
@@ -305,7 +307,15 @@ class Watcher:
         self._aliases = {}  # "jade_pantheon" -> 60080
         self._items = {}   # id -> icon path
         self._reset_cs_tracking()
-        self.match_log = ingame.MatchLog(MATCHES_PATH)
+        self.rank = rank.RankTracker(RANK_PATH)
+        self.history = []          # official match history records, oldest first
+        self._team_kills = {}      # game id -> my team's kills (for kill participation)
+        self.rank_entry = None     # current Classic rank from the client
+        self.ladder = None         # {"position", "size"} in my division's league
+        self.pending_result = None  # finished game waiting for its SP change
+        self._pending_lock = threading.Lock()
+        self._bg_next = 0
+        self._watch_rank_until = 0  # poll rank fast for a while after a game
         self._reset_game()
 
     def _reset_game(self, game_id=None, pool=()):
@@ -329,6 +339,8 @@ class Watcher:
             s = dict(self.status)
         s["version"] = __version__
         s["cs_goal"] = self.cfg.get("cs_goal", 7.0)
+        e = self.rank_entry
+        s["rank_line"] = f"{rank.describe(e['pos'])['text']} · {e['wins']}W {e['losses']}L" if e else None
         s["auto_accept"] = self.cfg["auto_accept"]
         s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
                           "ban": list(self.cfg.get("favorite_bans", []))}
@@ -340,6 +352,7 @@ class Watcher:
         log(text)
 
     def run(self):
+        threading.Thread(target=self.background_loop, daemon=True).start()
         while True:
             try:
                 self.tick()
@@ -707,6 +720,135 @@ class Watcher:
                 self.notifier.send("GAME LOADED", f"You're in as {me['champ']}. GLHF!",
                                    priority=4, tags=["crossed_swords"])
 
+    # ------------------------------------------------ history + rank (background)
+
+    def background_loop(self):
+        """Match history and rank refresh: every minute, every 5s right after a game."""
+        while True:
+            now = time.time()
+            if now >= self._bg_next or now < self._watch_rank_until:
+                try:
+                    self.refresh_history_and_rank()
+                except (ConnectionError, urllib.error.HTTPError):
+                    pass
+                except Exception as e:
+                    log(f"history/rank error: {e!r}")
+                self._bg_next = now + 60
+            self.check_pending_timeout()
+            time.sleep(5)
+
+    def refresh_history_and_rank(self):
+        resp = self.lcu.request("GET", "/lol-match-history/v1/products/lol/current-summoner/matches"
+                                       "?begIndex=0&endIndex=100", timeout=30)
+        games = ((resp or {}).get("games") or {}).get("games") or []
+        for g in sorted(games, key=lambda g: g.get("gameCreation", 0))[-20:]:  # KP for recent games
+            gid = str(g.get("gameId"))
+            if gid not in self._team_kills and g.get("participants"):
+                full = self.lcu.request("GET", f"/lol-match-history/v1/games/{gid}", timeout=10)
+                self._team_kills[gid] = ingame.team_kills_from_game(full, g["participants"][0].get("participantId"))
+        self.history = ingame.records_from_history(resp, lambda cid: self.champions().get(cid), self._team_kills)
+
+        entry = rank.entry_from_ranked_stats(self.lcu.request("GET", "/lol-ranked/v1/current-ranked-stats", timeout=10))
+        self.rank_entry = entry
+        if entry:
+            self.ladder = self.ladder_position()
+        classic = [r for r in self.history if r.get("queue") == CLASSIC_QUEUE]
+        known = {c.get("game_id") for c in self.rank.changes()}
+        latest = classic[-1] if classic and classic[-1]["id"] not in known else None
+        change = self.rank.update(entry, latest)
+        if change:
+            self.on_rank_change(change)
+
+    def ladder_position(self):
+        try:
+            me = self.lcu.request("GET", "/lol-summoner/v1/current-summoner") or {}
+            ladders = self.lcu.request("GET", f"/lol-ranked/v1/league-ladders/{me.get('puuid')}", timeout=10) or []
+        except urllib.error.HTTPError:
+            return None
+        for q in ladders:
+            if q.get("queueType") != rank.QUEUE:
+                continue
+            for d in q.get("divisions") or []:
+                st = d.get("standings") or []
+                mine = next((s for s in st if s.get("puuid") == me.get("puuid")), None)
+                if mine:
+                    return {"position": mine.get("position"), "size": len(st)}
+        return None
+
+    def on_rank_change(self, change):
+        sign = "+" if change["delta"] >= 0 else ""
+        self.event(f"Rank: {sign}{change['delta']} SP -> {rank.describe(change['after']['pos'])['text']}")
+        with self._pending_lock:
+            pending, self.pending_result = self.pending_result, None
+        rec = pending["rec"] if pending else next(
+            (r for r in reversed(self.history) if r["id"] == change.get("game_id")), None)
+        if rec or change.get("games") == 1:
+            self.send_result(rec, change)
+
+    def check_pending_timeout(self):
+        """No SP change showed up (e.g. not a Classic ranked game) -> send the result anyway."""
+        with self._pending_lock:
+            pending = self.pending_result
+            if not pending or time.time() - pending["at"] < 150:
+                return
+            self.pending_result = None
+        self.send_result(pending["rec"], None)
+
+    def rank_prediction(self):
+        if not self.rank_entry:
+            return None
+        results = [r["win"] for r in self.history if r.get("queue") == CLASSIC_QUEUE]
+        return rank.predict(self.rank_entry, self.rank.changes(), results)
+
+    def send_result(self, rec, change):
+        win = rec["win"] if rec else change.get("win")
+        title = "VICTORY" if win else "DEFEAT" if win is False else "GAME OVER"
+        lines = []
+        if rec:
+            line = f"{rec['champ']} {rec['k']}/{rec['d']}/{rec['a']} - {rec['cs_min']} CS/min"
+            if rec.get("kp") is not None:
+                line += f" - {rec['kp']}% KP"
+            lines.append(line)
+        if change:
+            sign = "+" if change["delta"] >= 0 else ""
+            title += f" {sign}{change['delta']} SP"
+            lines.append(f"Now {rank.describe(change['after']['pos'])['text']}")
+            pred = self.rank_prediction()
+            goal = next((g for g in (pred or {}).get("goals", []) if g["emblem"]), None)
+            if goal and goal["games"]:
+                lines.append(f"~{goal['games']} games to {goal['name']} (at {pred['win_rate']}% WR)")
+        if rec:
+            lines += ingame.personal_bests(rec, self.history)
+        today = ingame.compute_stats([r for r in self.history if r.get("queue") == CLASSIC_QUEUE])["today"]
+        lines.append(f"Today: {today['wins']}W {today['losses']}L")
+        self.event(f"{title}: {lines[0]}")
+        if self.cfg.get("notify_game", True):
+            self.notifier.send(title, "\n".join(lines), priority=3,
+                               tags=["trophy" if win else "skull", "bar_chart"],
+                               actions=[{"action": "view", "label": "My rank",
+                                         "url": self.notifier.control_url + "/#stats", "clear": True}])
+
+    def stats_payload(self):
+        classic = [r for r in self.history if r.get("queue") == CLASSIC_QUEUE]
+        st = ingame.compute_stats(classic, self.cfg.get("favorite_picks") or [])
+        deltas = {c["game_id"]: c["delta"] for c in self.rank.changes() if c.get("game_id")}
+        for r in st["recent"]:
+            r["sp"] = deltas.get(r["id"])
+        st["rank"] = self.rank_prediction()
+        if st["rank"]:
+            # win-rate presets for the what-if slider: recent, season, and your main champion
+            presets = []
+            if st["rank"]["win_rate_basis"] != "this season":  # recent form, e.g. "Last 20 games"
+                presets.append({"label": st["rank"]["win_rate_basis"].capitalize(), "wr": st["rank"]["win_rate"]})
+            presets.append({"label": "Season", "wr": st["rank"]["season"]["wr"]})
+            main = next((c for c in st["champions"] if c["fav"] and c["games"] >= 5), None)
+            if main:
+                presets.append({"label": f"{main['champ']} ({main['games']} games)", "wr": main["wr"]})
+            st["rank"]["presets"] = presets
+        st["ladder"] = self.ladder
+        st["loaded"] = bool(self.history) or self.rank_entry is not None
+        return st
+
     def try_record_eog(self):
         if self.game_recorded:
             return
@@ -730,24 +872,12 @@ class Watcher:
             self.save_record(rec)
 
     def save_record(self, rec):
+        """Game over: hold the result until its SP change arrives (sent by on_rank_change)."""
         self.game_recorded = True
-        added, notes = self.match_log.add(rec)
-        if not added:
-            return
-        result = "VICTORY" if rec["win"] else "DEFEAT" if rec["win"] is False else "GAME OVER"
-        line = f"{rec['champ']} {rec['k']}/{rec['d']}/{rec['a']} - {rec['cs_min']} CS/min"
-        if rec.get("kp") is not None:
-            line += f" - {rec['kp']}% KP"
-        self.event(f"{result}: {line}")
-        if not self.cfg.get("notify_game", True):
-            return
-        st = self.match_log.stats()
-        today = st["today"]
-        body = "\n".join([line] + notes + [f"Today: {today['wins']}W {today['losses']}L"])
-        self.notifier.send(result, body, priority=3,
-                           tags=["trophy" if rec["win"] else "skull", "bar_chart"],
-                           actions=[{"action": "view", "label": "My stats",
-                                     "url": self.notifier.control_url + "/#stats", "clear": True}])
+        with self._pending_lock:
+            self.pending_result = {"rec": rec, "at": time.time()}
+        self._watch_rank_until = time.time() + 240
+        self._bg_next = 0
 
     CAPTURE_ENDPOINTS = [
         "/lol-gameflow/v1/session",
@@ -756,6 +886,7 @@ class Watcher:
         "/lol-champ-select/v1/bannable-champion-ids",
         "/lol-lobby-team-builder/champ-select/v1/session",
         "/lol-end-of-game/v1/eog-stats-block",
+        "/lol-ranked/v1/current-lp-change-notification",
     ]
 
     def _snapshot_endpoints(self):
@@ -828,6 +959,7 @@ class Watcher:
                                              "clear": True, "url": self.notifier.control_url + "/api/reconnect"}])
         if (old in game_over or old in in_game) and new not in game_over and new not in in_game:
             self.record_from_live_fallback()
+            self._watch_rank_until = time.time() + 240
 
 
 # ---------------------------------------------------------------- web server
@@ -893,7 +1025,7 @@ def make_handler(cfg, lcu, watcher):
             elif url.path.startswith("/item/"):
                 self._icon(url.path.rsplit("/", 1)[-1], item=True)
             elif url.path == "/api/stats":
-                self._json(200, watcher.match_log.stats(cfg.get("favorite_picks") or []))
+                self._json(200, watcher.stats_payload())
             else:
                 self._json(404, {"error": "not found"})
 

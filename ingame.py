@@ -14,7 +14,6 @@ SAFETY - what this module does and does not do
 """
 
 import json
-import os
 import ssl
 import time
 import urllib.error
@@ -244,93 +243,109 @@ def _record(game_id, mode, champ, champ_id, win, k, d, a, cs, secs, team_kills, 
     }
 
 
-class MatchLog:
-    """Append-only JSON-lines file of your games (matches.jsonl, git-ignored)."""
+def records_from_history(resp, champ_name, team_kills=None):
+    """The client's official match history -> records, oldest first.
+    team_kills: optional {game_id: kills of my team} for kill participation."""
+    games = ((resp or {}).get("games") or {}).get("games") or []
+    out = []
+    for g in games:
+        parts = g.get("participants") or []
+        secs = g.get("gameDuration") or 0
+        if not parts or secs < 300:  # remakes
+            continue
+        p = parts[0]
+        s = p.get("stats") or {}
+        cid = p.get("championId") or 0
+        gid = str(g.get("gameId"))
+        rec = _record(gid, g.get("gameMode") or "", champ_name(cid) or "?", cid,
+                      bool(s["win"]) if "win" in s else None,
+                      s.get("kills", 0), s.get("deaths", 0), s.get("assists", 0),
+                      s.get("totalMinionsKilled", 0) + s.get("neutralMinionsKilled", 0), secs,
+                      (team_kills or {}).get(gid), damage=s.get("totalDamageDealtToChampions"),
+                      vision=s.get("visionScore"), gold=s.get("goldEarned"), source="history")
+        created = (g.get("gameCreation") or 0) / 1000
+        rec["created"] = created
+        rec["date"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(created))
+        rec["queue"] = g.get("queueId")
+        out.append(rec)
+    out.sort(key=lambda r: r["created"])
+    return out
 
-    def __init__(self, path):
-        self.path = path
 
-    def load(self):
-        if not os.path.exists(self.path):
-            return []
-        out = []
-        with open(self.path, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    out.append(json.loads(line))
-                except ValueError:
-                    pass
-        return out
+def team_kills_from_game(game, participant_id):
+    """Full game from /lol-match-history/v1/games/{id} -> kills of that player's team."""
+    parts = (game or {}).get("participants") or []
+    me = next((p for p in parts if p.get("participantId") == participant_id), None)
+    if not me:
+        return None
+    return sum((p.get("stats") or {}).get("kills", 0) for p in parts if p.get("teamId") == me.get("teamId"))
 
-    def add(self, rec):
-        """Save a game. Returns (added, notes) - notes are personal-best messages."""
-        games = self.load()
-        if any(g["id"] == rec["id"] for g in games):
-            return False, []
-        same = [g for g in games if g["champ"] == rec["champ"]]
-        notes = []
-        if len(same) >= 3:  # only brag once there's something to beat
-            for key, label in (("cs_min", "CS/min"), ("kda", "KDA"), ("k", "kills"), ("kp", "kill participation")):
-                best = max((g.get(key) or 0) for g in same)
-                if (rec.get(key) or 0) > best:
-                    notes.append(f"New {rec['champ']} best {label}: {rec[key]} (was {best})")
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
-        return True, notes
 
-    def stats(self, favorites=()):
-        games = self.load()
-        decided = [g for g in games if g.get("win") is not None]
-        wins = sum(1 for g in decided if g["win"])
+def personal_bests(rec, games):
+    """'New Pantheon best CS/min: 8.1 (was 7.6)' messages vs earlier games on the same champion."""
+    same = [g for g in games if g["champ"] == rec["champ"] and g["id"] != rec["id"]]
+    notes = []
+    if len(same) >= 3:  # only brag once there's something to beat
+        for key, label in (("cs_min", "CS/min"), ("kda", "KDA"), ("k", "kills"), ("kp", "kill participation")):
+            best = max((g.get(key) or 0) for g in same)
+            if (rec.get(key) or 0) > best:
+                notes.append(f"New {rec['champ']} best {label}: {rec[key]} (was {best})")
+    return notes
 
-        streak, kind = 0, None
-        for g in reversed(decided):
-            if kind is None:
-                kind = g["win"]
-            if g["win"] != kind:
-                break
-            streak += 1
 
-        today = time.strftime("%Y-%m-%d")
-        todays = [g for g in decided if g["date"].startswith(today)]
+def compute_stats(games, favorites=()):
+    """Aggregate records (oldest first) for the Stats page."""
+    decided = [g for g in games if g.get("win") is not None]
+    wins = sum(1 for g in decided if g["win"])
 
-        champs = {}
-        for g in games:
-            c = champs.setdefault(g["champ"], {"champ": g["champ"], "champ_id": g.get("champ_id") or 0,
-                                               "games": 0, "wins": 0, "k": 0, "d": 0, "a": 0,
-                                               "cs_min": [], "kp": [], "best": None})
-            c["games"] += 1
-            c["wins"] += 1 if g.get("win") else 0
-            c["k"] += g["k"]; c["d"] += g["d"]; c["a"] += g["a"]
-            c["cs_min"].append(g.get("cs_min") or 0)
-            if g.get("kp") is not None:
-                c["kp"].append(g["kp"])
-            if c["best"] is None or g["kda"] > c["best"]["kda"]:
-                c["best"] = {"kda": g["kda"], "score": f"{g['k']}/{g['d']}/{g['a']}", "date": g["date"]}
+    streak, kind = 0, None
+    for g in reversed(decided):
+        if kind is None:
+            kind = g["win"]
+        if g["win"] != kind:
+            break
+        streak += 1
 
-        fav_order = {n.lower(): i for i, n in enumerate(favorites)}
-        rows = []
-        for c in champs.values():
-            rows.append({
-                "champ": c["champ"], "champ_id": c["champ_id"], "games": c["games"], "wins": c["wins"],
-                "wr": round(100 * c["wins"] / c["games"]),
-                "kda": round((c["k"] + c["a"]) / max(c["d"], 1), 2),
-                "avg": f"{c['k'] / c['games']:.1f}/{c['d'] / c['games']:.1f}/{c['a'] / c['games']:.1f}",
-                "cs_min": round(sum(c["cs_min"]) / len(c["cs_min"]), 1),
-                "kp": round(sum(c["kp"]) / len(c["kp"])) if c["kp"] else None,
-                "best": c["best"],
-                "fav": c["champ"].lower() in fav_order,
-            })
-        rows.sort(key=lambda r: (fav_order.get(r["champ"].lower(), 999), -r["games"]))
+    today = time.strftime("%Y-%m-%d")
+    todays = [g for g in decided if g["date"].startswith(today)]
 
-        return {
-            "games": len(games),
-            "wins": wins,
-            "losses": len(decided) - wins,
-            "wr": round(100 * wins / len(decided)) if decided else None,
-            "streak": {"count": streak, "win": kind} if streak else None,
-            "today": {"wins": sum(1 for g in todays if g["win"]), "losses": sum(1 for g in todays if not g["win"])},
-            "champions": rows,
-            "recent": list(reversed(games[-15:])),
-            "trend": [g.get("cs_min") or 0 for g in games[-20:]],
-        }
+    champs = {}
+    for g in games:
+        c = champs.setdefault(g["champ"], {"champ": g["champ"], "champ_id": g.get("champ_id") or 0,
+                                           "games": 0, "wins": 0, "k": 0, "d": 0, "a": 0,
+                                           "cs_min": [], "kp": [], "best": None})
+        c["games"] += 1
+        c["wins"] += 1 if g.get("win") else 0
+        c["k"] += g["k"]; c["d"] += g["d"]; c["a"] += g["a"]
+        c["cs_min"].append(g.get("cs_min") or 0)
+        if g.get("kp") is not None:
+            c["kp"].append(g["kp"])
+        if c["best"] is None or g["kda"] > c["best"]["kda"]:
+            c["best"] = {"kda": g["kda"], "score": f"{g['k']}/{g['d']}/{g['a']}", "date": g["date"]}
+
+    fav_order = {n.lower(): i for i, n in enumerate(favorites)}
+    rows = []
+    for c in champs.values():
+        rows.append({
+            "champ": c["champ"], "champ_id": c["champ_id"], "games": c["games"], "wins": c["wins"],
+            "wr": round(100 * c["wins"] / c["games"]),
+            "kda": round((c["k"] + c["a"]) / max(c["d"], 1), 2),
+            "avg": f"{c['k'] / c['games']:.1f}/{c['d'] / c['games']:.1f}/{c['a'] / c['games']:.1f}",
+            "cs_min": round(sum(c["cs_min"]) / len(c["cs_min"]), 1),
+            "kp": round(sum(c["kp"]) / len(c["kp"])) if c["kp"] else None,
+            "best": c["best"],
+            "fav": c["champ"].lower() in fav_order,
+        })
+    rows.sort(key=lambda r: (fav_order.get(r["champ"].lower(), 999), -r["games"]))
+
+    return {
+        "games": len(games),
+        "wins": wins,
+        "losses": len(decided) - wins,
+        "wr": round(100 * wins / len(decided)) if decided else None,
+        "streak": {"count": streak, "win": kind} if streak else None,
+        "today": {"wins": sum(1 for g in todays if g["win"]), "losses": sum(1 for g in todays if not g["win"])},
+        "champions": rows,
+        "recent": list(reversed(games[-15:])),
+        "trend": [g.get("cs_min") or 0 for g in games[-20:]],
+    }

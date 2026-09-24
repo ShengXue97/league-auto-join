@@ -10,5 +10,6 @@ __pycache__/
 # Local scratch files (screenshots etc.)
 tmp/
 
-# Your personal match history
-matches.jsonl
+# Your SP change history (the client does not keep one)
+rank_history.jsonl
+rank_history.jsonl.last

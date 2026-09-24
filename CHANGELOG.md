@@ -3,6 +3,27 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.4.0] - 2026-09-24
+### Added
+- Classic rank (Summoner's Journey): emblem, division and SP from the client,
+  season record, league standing, and SP for your next win / loss.
+- SP tracking: Riot doesn't store per-game SP, so League Remote records the rank
+  before and after every game (`rank_history.jsonl`, git-ignored) and learns
+  your typical SP per win and loss. Games played while it was closed are still
+  counted on the next start.
+- Climb forecast: games and minimum wins to the next division, each emblem and
+  Legend, with a what-if win-rate slider (presets: recent form, season, your
+  main champion), break-even win rate and demotion warning.
+- Next-games scenarios (1/2/3/5 wins or losses) and an SP history list.
+- Post-game alert now waits for the SP change: "VICTORY +21 SP", new rank and
+  games to the next emblem.
+- Rank line on the Live tab while idle or in queue.
+- `tests/test_rank.py`.
+
+### Changed
+- Stats now come from Riot's official match history (your last ~100 games,
+  Classic only), replacing League Remote's own `matches.jsonl` log.
+
 ## [1.3.0] - 2026-09-24
 ### Added
 - In-game second screen (read-only, from Riot's official Live Client Data API):

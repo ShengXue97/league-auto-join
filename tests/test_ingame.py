@@ -101,32 +101,43 @@ check(ingame.summarize(live_data(end="Win"))["result"] == "Win", "game result fr
 early = ingame.summarize(live_data(t=30))
 check(early["me"]["cs_min"] is None, "no CS/min in the first minute")
 
-# ------------------------------------------------------------ match log
-tmp = tempfile.mkdtemp()
-log = ingame.MatchLog(os.path.join(tmp, "m.jsonl"))
-check(log.stats()["games"] == 0 and log.stats()["wr"] is None, "empty history")
+# ------------------------------------------------------------ official match history
+def hist_game(gid, champ, win, k=5, d=2, a=5, cs=150, secs=1500, created=1_700_000_000_000, queue=4310, pid=1):
+    return {"gameId": gid, "gameMode": "JADE", "queueId": queue, "gameDuration": secs, "gameCreation": created,
+            "participants": [{"participantId": pid, "championId": champ,
+                              "stats": {"win": win, "kills": k, "deaths": d, "assists": a,
+                                        "totalMinionsKilled": cs - 10, "neutralMinionsKilled": 10}}]}
 
 
-def rec(i, win, k=5, d=2, a=5, cs=150, secs=1500, champ="Pantheon", kills=15):
-    return ingame._record(i, "JADE", champ, 60080, win, k, d, a, cs, secs, kills)
-
-
-for i, w in enumerate([True, False, True]):
-    log.add(rec(i, w))
-check(log.add(rec(1, True)) == (False, []), "duplicate game ignored")
-added, notes = log.add(rec(9, True, k=12, cs=250))
-check(added and any("best CS/min" in n for n in notes) and any("best kills" in n for n in notes),
-      f"personal best notes: {notes}")
-log.add(rec(10, False, champ="Ahri"))
-st = log.stats(["Pantheon"])
+names = {60080: "Pantheon", 60103: "Ahri"}.get
+resp = {"games": {"games": [  # newest first, like the client
+    hist_game(4, 60103, False, created=1_700_000_400_000),
+    hist_game(3, 60080, True, k=12, cs=250, created=1_700_000_300_000),
+    hist_game(99, 60080, False, secs=200, created=1_700_000_250_000),  # remake
+    hist_game(2, 60080, False, created=1_700_000_200_000),
+    hist_game(1, 60080, True, created=1_700_000_100_000),
+    hist_game(0, 60080, True, created=1_700_000_000_000),
+]}}
+recs = ingame.records_from_history(resp, names, {"3": 20})
+check([r["id"] for r in recs] == ["0", "1", "2", "3", "4"], "history oldest first, remake skipped")
+check(recs[3]["kp"] == 85 and recs[0]["kp"] is None, "kill participation from team kills when known")
+check(recs[3]["cs_min"] == 10.0 and recs[3]["queue"] == 4310, "history record fields")
+notes = ingame.personal_bests(recs[3], recs)
+check(any("best CS/min" in n for n in notes) and any("best kills" in n for n in notes), f"personal bests: {notes}")
+check(ingame.personal_bests(recs[4], recs) == [], "no bests without 3 earlier games on that champion")
+st = ingame.compute_stats(recs, ["Pantheon"])
 check(st["games"] == 5 and st["wins"] == 3 and st["wr"] == 60, "overall win rate")
 check(st["streak"] == {"count": 1, "win": False}, "current streak")
-check(st["champions"][0]["champ"] == "Pantheon" and st["champions"][0]["fav"], "favorite listed first")
 pan = st["champions"][0]
-check(pan["games"] == 4 and pan["wr"] == 75 and pan["best"]["score"] == "12/2/5", "per-champion stats")
-check(st["recent"][0]["champ"] == "Ahri" and len(st["trend"]) == 5, "recent games newest first, trend")
+check(pan["champ"] == "Pantheon" and pan["fav"] and pan["games"] == 4 and pan["wr"] == 75, "per-champion, favorite first")
+check(st["recent"][0]["champ"] == "Ahri" and len(st["trend"]) == 5, "recent newest first, trend")
+check(ingame.compute_stats([])["wr"] is None, "empty history")
+team = {"participants": [{"participantId": 1, "teamId": 100, "stats": {"kills": 5}},
+                         {"participantId": 2, "teamId": 100, "stats": {"kills": 7}},
+                         {"participantId": 6, "teamId": 200, "stats": {"kills": 9}}]}
+check(ingame.team_kills_from_game(team, 1) == 12, "team kills from full game")
 
-eog = {"gameId": 777, "gameLength": 1800, "gameMode": "JADE",
+eog = {"gameId": 555, "gameLength": 1800, "gameMode": "JADE",
        "localPlayer": {"championId": 60080, "stats": {"CHAMPIONS_KILLED": 8, "NUM_DEATHS": 2, "ASSISTS": 10,
                                                       "MINIONS_KILLED": 180, "NEUTRAL_MINIONS_KILLED": 30,
                                                       "WIN": 1, "VISION_SCORE": 22}},
@@ -147,8 +158,11 @@ class FakeLCU:
         self.phase = "InProgress"
         self.eog = None
         self.calls = []
+        self.history = copy.deepcopy(resp)
+        self.ranked = {"tier": "PLATINUM", "division": "I", "leaguePoints": 22, "wins": 60, "losses": 54,
+                       "highestTier": "PLATINUM", "highestDivision": "I"}
 
-    def request(self, method, path, body=None):
+    def request(self, method, path, body=None, timeout=3):
         if method != "GET":
             self.calls.append((method, path))
         if path == "/lol-gameflow/v1/gameflow-phase":
@@ -158,11 +172,23 @@ class FakeLCU:
         if path == "/lol-game-data/assets/v1/champion-summary.json":
             return [{"id": 80, "name": "Pantheon", "alias": "Pantheon"},
                     {"id": 60080, "name": "Pantheon", "alias": "Jade_Pantheon"},
-                    {"id": 103, "name": "Ahri", "alias": "Ahri"}]
+                    {"id": 60103, "name": "Ahri", "alias": "Jade_Ahri"}]
         if path == "/lol-game-data/assets/v1/items.json":
             return [{"id": 1001, "iconPath": "/lol-game-data/assets/ASSETS/Items/Icons2D/1001.png"}]
         if path == "/lol-end-of-game/v1/eog-stats-block":
             return self.eog
+        if path.startswith("/lol-match-history/v1/products/lol/current-summoner/matches"):
+            return self.history
+        if path.startswith("/lol-match-history/v1/games/"):
+            return team
+        if path == "/lol-ranked/v1/current-ranked-stats":
+            return {"queueMap": {"JADE_RANKED_SOLO_5x5": dict(self.ranked)}}
+        if path == "/lol-summoner/v1/current-summoner":
+            return {"puuid": "me"}
+        if path.startswith("/lol-ranked/v1/league-ladders/"):
+            return [{"queueType": "JADE_RANKED_SOLO_5x5", "divisions": [
+                {"standings": [{"puuid": f"p{i}"} for i in range(4)] + [{"puuid": "me", "position": 5}]
+                 + [{"puuid": f"q{i}"} for i in range(12)]}]}]
         return None
 
     def raw(self, path):
@@ -177,7 +203,7 @@ def make():
     n = lr.Notifier(cfg, "http://pc:5000")
     n.send = lambda title, message, **kw: sent.append((title, message, kw.get("actions") or []))
     w = lr.Watcher(cfg, lcu, n)
-    w.match_log = ingame.MatchLog(os.path.join(tempfile.mkdtemp(), "m.jsonl"))
+    w.rank = __import__("rank").RankTracker(os.path.join(tempfile.mkdtemp(), "r.jsonl"))
     return cfg, lcu, w, sent
 
 
@@ -185,6 +211,9 @@ LIVE = {"data": live_data()}
 ingame.fetch_live = lambda timeout=1.0: copy.deepcopy(LIVE["data"])
 
 cfg, lcu, w, sent = make()
+w.refresh_history_and_rank()  # startup: history + rank before the game
+check(w.snapshot()["rank_line"].startswith("Platinum I 22 SP"), "status shows current rank")
+check(w.ladder == {"position": 5, "size": 17}, "league standing #5 of 17")
 w.tick()
 st = w.snapshot()
 check(st["game"]["me"]["champ_id"] == 60080, "live champion resolved to Classic Pantheon via alias")
@@ -194,29 +223,57 @@ w._live_at = 0
 w.tick()
 check(len(sent) == 1, "game loaded alert only once")
 
-# game over with end-of-game stats
+# game over: result waits for the SP change, then one combined alert
 lcu.phase, lcu.eog = "EndOfGame", eog
 w.tick()
-check(sent[-1][0] == "VICTORY" and "Pantheon 8/2/10" in sent[-1][1] and "Today: 1W 0L" in sent[-1][1],
-      f"victory alert: {sent[-1][:2]}")
-check(sent[-1][2][0]["url"].endswith("/#stats"), "alert links to stats")
+check(len(sent) == 1 and w.pending_result, "result held until SP change arrives")
 check(w.snapshot()["game"] is not None, "final scoreboard still visible after the game")
+lcu.ranked.update(leaguePoints=43, wins=61)
+lcu.history["games"]["games"].insert(0, hist_game(555, 60080, True, k=8, d=2, a=10, cs=210, secs=1800,
+                                                  created=1_700_000_500_000))
+w.refresh_history_and_rank()
+res = [x for x in sent if "VICTORY" in x[0]]
+check(len(res) == 1 and res[0][0] == "VICTORY +21 SP", f"combined alert title: {[x[0] for x in sent]}")
+check("Now Platinum I 43 SP" in res[0][1] and "Pantheon 8/2/10" in res[0][1], "alert has new rank and score")
+check(res[0][2][0]["url"].endswith("/#stats"), "alert links to rank page")
+changes = w.rank.changes()
+check(len(changes) == 1 and changes[0]["delta"] == 21 and changes[0]["game_id"] == "555", "SP change recorded for the game")
+payload = w.stats_payload()
+check(payload["recent"][0]["id"] == "555" and payload["recent"][0]["sp"] == 21, "recent game shows +21 SP")
+check(payload["rank"]["rank"]["text"] == "Platinum I 43 SP", "rank in stats payload")
+check([p["label"] for p in payload["rank"]["presets"]] == ["Season", "Pantheon (5 games)"],
+      f"win-rate presets: {payload['rank']['presets']}")
+w.refresh_history_and_rank()
+check(len(w.rank.changes()) == 1 and len([x for x in sent if "VICTORY" in x[0]]) == 1, "no duplicate on re-refresh")
 lcu.phase = "Lobby"
 w.tick()
-check(len(w.match_log.load()) == 1 and sum(t == "VICTORY" for t, *_ in sent) == 1, "recorded once, no fallback duplicate")
+check(len([x for x in sent if "VICTORY" in x[0]]) == 1, "no fallback duplicate after leaving the game")
 
-# no end-of-game stats -> fallback to last live snapshot
+# no SP change (e.g. not a ranked game) -> result sent after a timeout, without SP
 cfg, lcu, w, sent = make()
+w.refresh_history_and_rank()
 LIVE["data"] = live_data(end="Lose")
 w.tick()
 lcu.phase = "EndOfGame"
 w.tick()
 lcu.phase = "Lobby"
 w.tick()
-games = w.match_log.load()
-check(len(games) == 1 and games[0]["source"] == "live" and games[0]["win"] is False and games[0]["id"] == "555",
+check(w.pending_result and w.pending_result["rec"]["source"] == "live" and w.pending_result["rec"]["win"] is False,
       "fallback record from live data")
-check(sent[-1][0] == "DEFEAT", "defeat alert")
+w.pending_result["at"] -= 1000
+w.check_pending_timeout()
+check(sent[-1][0] == "DEFEAT" and "SP" not in sent[-1][0], "defeat alert without SP after timeout")
+
+# SP changed while League Remote wasn't running (several games) -> recorded, no per-game claim
+cfg, lcu, w, sent = make()
+w.refresh_history_and_rank()
+w2 = lr.Watcher(cfg, lcu, w.notifier)
+w2.rank = w.rank
+lcu.ranked.update(leaguePoints=10, division="II", wins=62, losses=55)
+w2.refresh_history_and_rank()
+c = w2.rank.changes()[-1]
+check(c["games"] == 3 and c["win"] is None and c["game_id"] is None and c["delta"] == -112,
+      "multi-game change across restarts recorded without guessing a single game")
 
 # live API unavailable (e.g. mode without it) -> nothing breaks
 cfg, lcu, w, sent = make()
@@ -225,7 +282,7 @@ w.tick()
 check(w.snapshot()["live_ok"] is False and w.snapshot()["game"] is None, "no live data handled gracefully")
 lcu.phase = "Lobby"
 w.tick()
-check(w.match_log.load() == [], "nothing recorded without data")
+check(w.pending_result is None, "nothing recorded without data")
 
 # reconnect
 cfg, lcu, w, sent = make()
@@ -252,9 +309,10 @@ check(code == 200 and ("POST", "/lol-gameflow/v1/reconnect") in lcu.calls, "phon
 code, body = req("GET", "/item/1001")
 check(code == 200 and b"1001.png" in body, "item icon proxied")
 check(req("GET", "/item/42")[0] == 404, "unknown item 404")
-w.match_log.add(rec(1, True))
+w.refresh_history_and_rank()
 code, body = req("GET", "/api/stats")
-check(code == 200 and json.loads(body)["games"] == 1, "/api/stats")
+data = json.loads(body)
+check(code == 200 and data["games"] == 5 and data["rank"]["rank"]["emblem"] == "Platinum" and data["loaded"], "/api/stats")
 srv.shutdown()
 
 print("\nALL PASSED" if not failed else "\nSOME FAILED")

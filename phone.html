@@ -165,6 +165,36 @@
   .result { font-size: 30px; font-weight: 800; text-align: center; letter-spacing: .1em; }
   .result.win { color: var(--blue); } .result.lose { color: var(--red); }
 
+  /* ---------- rank ---------- */
+  .rank-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .rank-name { font-size: 28px; font-weight: 800; color: var(--gold); line-height: 1.1; }
+  .rank-sp { text-align: right; white-space: nowrap; }
+  .rank-sp b { font-size: 34px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .rank-sp small { color: var(--muted); margin-left: 4px; }
+  .nextgame { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; text-align: center; }
+  .nextgame .stat b { font-size: 24px; }
+  .nextgame .up b { color: var(--green); } .nextgame .down b { color: var(--red); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .preset { padding: 6px 10px; font-size: 12px; letter-spacing: .02em; border: 1px solid var(--gold-dim); border-radius: 14px; font-weight: 600; }
+  .preset.on { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-row input { flex: 1; accent-color: var(--gold); height: 28px; min-width: 0; }
+  .slider-row b { font-size: 20px; width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+  .goal { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid #ffffff10; }
+  .goal:first-child { border-top: 0; }
+  .goal .gname { font-weight: 700; }
+  .goal .gname.emb { color: var(--gold); }
+  .goal .gnum { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .goal .gnum.no { color: var(--red); font-weight: 400; font-size: 13px; }
+  .scen { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .scen td { padding: 6px 4px; border-top: 1px solid #ffffff10; }
+  .scen tr:first-child td { border-top: 0; }
+  .scen .w { color: var(--green); } .scen .l { color: var(--red); }
+  .spchip { display: inline-block; min-width: 44px; text-align: center; padding: 2px 6px; border-radius: 5px; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .spchip.up { background: #0acb6e22; color: var(--green); } .spchip.down { background: #e8405722; color: var(--red); }
+  .sprow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #ffffff10; font-size: 14px; }
+  .sprow:first-child { border-top: 0; }
+
   /* ---------- stats ---------- */
   .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
   .spark { width: 100%; height: 70px; display: block; margin-top: 8px; }
@@ -200,6 +230,7 @@
       <div class="phase" id="phase">Connecting…</div>
       <div class="big" id="clock"></div>
       <div class="sub" id="sub"></div>
+      <div class="hint" id="rankLine" style="text-align:center" hidden></div>
     </div>
 
     <div class="btns" id="queueBtns">
@@ -292,8 +323,45 @@
 <!-- ============================== STATS ============================== -->
 <main class="layout" id="stats" hidden>
   <div class="col">
+    <div class="card" id="statsLoading">
+      <div class="hint">Loading your match history and rank from the League client…</div>
+    </div>
+    <div class="card" id="rankCard" hidden>
+      <div class="label">Classic rank · Summoner's Journey</div>
+      <div class="rank-head">
+        <div style="min-width:0"><div class="rank-name" id="rankName"></div><div class="hint" id="rankSub"></div></div>
+        <div class="rank-sp"><b id="rankSp"></b><small>/ 100 SP</small></div>
+      </div>
+      <div class="bar"><i id="rankBar"></i></div>
+      <div class="nextgame">
+        <div class="stat up"><b id="winSp"></b><small>if you win</small></div>
+        <div class="stat down"><b id="lossSp"></b><small>if you lose</small></div>
+      </div>
+      <div class="hint" id="spNote" style="margin-top:10px"></div>
+    </div>
+    <div class="card" id="climbCard" hidden>
+      <div class="label">Climb forecast</div>
+      <div class="presets" id="presets"></div>
+      <div class="slider-row">
+        <input type="range" id="wr" min="30" max="75" step="1" aria-label="Win rate">
+        <b id="wrVal"></b>
+      </div>
+      <div class="hint" id="evLine" style="margin:6px 0 8px"></div>
+      <div id="goals"></div>
+      <div class="hint" id="dropLine" style="margin-top:10px"></div>
+    </div>
+    <div class="card" id="scenCard" hidden>
+      <div class="label">Next games</div>
+      <table class="scen" id="scen"></table>
+    </div>
+    <div class="card" id="spHistCard" hidden>
+      <div class="label">SP history</div>
+      <div id="spHist"></div>
+    </div>
+  </div>
+  <div class="col">
     <div class="card">
-      <div class="label">Overview</div>
+      <div class="label">Overview · Classic games</div>
       <div class="overview" id="overview"></div>
       <div class="hint" id="streak" style="text-align:center;margin-top:10px"></div>
     </div>
@@ -305,8 +373,6 @@
       <div class="label">Champions</div>
       <div id="champTable"></div>
     </div>
-  </div>
-  <div class="col">
     <div class="card">
       <div class="label">Recent games</div>
       <div id="recent"></div>
@@ -552,6 +618,8 @@ function render(s) {
   }
   $("clock").textContent = clock;
   $("sub").textContent = sub;
+  $("rankLine").textContent = s.rank_line || "";
+  show("rankLine", s.rank_line && !IN_GAME.includes(s.phase) && s.phase !== "ChampSelect");
 
   const inCs = s.phase === "ChampSelect" && s.cs;
   ["turn", "teamCard"].forEach(id => show(id, inCs));
@@ -580,11 +648,13 @@ function render(s) {
 
 /* ============================== stats ============================== */
 let statsDirty = true;
+let statsAt = 0;
 async function loadStats() {
   try {
     const r = await fetch("/api/stats", { cache: "no-store" });
     if (r.ok) renderStats(await r.json());
     statsDirty = false;
+    statsAt = Date.now();
   } catch (e) { /* offline */ }
 }
 
@@ -602,7 +672,78 @@ function spark(values, goal) {
   <div class="row"><small class="hint" style="margin:0">Dashed line = goal ${csGoal}</small><small class="hint" style="margin:0">Latest ${+values[values.length - 1]}</small></div>`;
 }
 
+let wrChoice = null;   // what-if win rate picked on the page (null = default)
+let lastRank = null;
+
+function renderRank(r, ladder) {
+  lastRank = r;
+  ["rankCard", "climbCard", "scenCard", "spHistCard"].forEach(id => show(id, !!r));
+  if (!r) return;
+  const rk = r.rank;
+  $("rankName").textContent = rk.emblem + (rk.division ? " " + rk.division : "");
+  const sub = [`${r.season.wins}W ${r.season.losses}L · ${r.season.wr}% this season`];
+  if (ladder && ladder.position) sub.push(`#${ladder.position} of ${ladder.size} in your league`);
+  $("rankSub").textContent = sub.join(" · ");
+  $("rankSp").textContent = rk.sp;
+  $("rankBar").style.width = (rk.emblem === "Legend" ? 100 : Math.min(100, rk.sp)) + "%";
+  $("winSp").textContent = `+${r.sp.win}`;
+  $("lossSp").textContent = `−${r.sp.loss}`;
+  const learned = r.sp.win_learned && r.sp.loss_learned;
+  $("spNote").textContent = learned
+    ? "Average of your recent tracked games."
+    : "Estimate. Riot doesn't store past SP changes, so this learns from your games from now on " +
+      `(${r.sp.tracked_wins}/3 wins, ${r.sp.tracked_losses}/3 losses tracked).`;
+
+  $("presets").innerHTML = (r.presets || []).map(p =>
+    `<button class="preset" data-wr="${+p.wr}">${esc(p.label)}: ${+p.wr}%</button>`).join("");
+  if (wrChoice == null) wrChoice = r.win_rate;
+  $("wr").value = wrChoice;
+  renderForecast();
+
+  $("dropLine").textContent = r.at_floor
+    ? `Division IV is the floor: losses can't drop you out of ${rk.emblem}.`
+    : r.losses_to_drop ? `${r.losses_to_drop} loss${r.losses_to_drop > 1 ? "es" : ""} in a row would drop you a division.` : "";
+
+  $("scen").innerHTML = r.scenarios.map(s => `
+    <tr><td>${s.n} ${s.n > 1 ? "games" : "game"}</td>
+      <td class="w">▲ ${esc(s.win)}</td><td class="l">▼ ${esc(s.loss)}</td></tr>`).join("");
+
+  $("spHist").innerHTML = r.history.length ? r.history.map(c => `
+    <div class="sprow">
+      <span class="spchip ${c.delta >= 0 ? "up" : "down"}">${c.delta >= 0 ? "+" : "−"}${Math.abs(c.delta)}</span>
+      <div style="flex:1;min-width:0" class="ellipsis">${c.champ ? esc(c.champ) + " · " : ""}${c.games > 1 ? `${+c.games} games · ` : ""}${esc(c.after)}</div>
+      <small class="hint" style="margin:0">${esc(c.time)}</small>
+    </div>`).join("")
+    : `<div class="hint">SP changes appear here after your next Classic game. Riot doesn't keep this history, so League Remote records it while it's running.</div>`;
+}
+
+function renderForecast() {
+  const r = lastRank;
+  if (!r) return;
+  const p = wrChoice / 100, G = r.sp.win, L = r.sp.loss;
+  const ev = p * G - (1 - p) * L;
+  $("wrVal").textContent = wrChoice + "%";
+  document.querySelectorAll(".preset").forEach(b => b.classList.toggle("on", +b.dataset.wr === +wrChoice));
+  $("evLine").textContent = `At ${wrChoice}% you average ${ev >= 0 ? "+" : "−"}${Math.abs(ev).toFixed(1)} SP per game. ` +
+    `Break-even is ${r.break_even_wr}%.`;
+  $("goals").innerHTML = r.goals.length ? r.goals.map(g => {
+    const games = ev > 0 ? Math.ceil(g.need / ev) : null;
+    return `<div class="goal">
+      <div class="gname${g.emblem ? " emb" : ""}">${esc(g.name)}</div>
+      <div class="gnum${games ? "" : " no"}">${games ? `~${games} games` : "not climbing at this WR"}</div>
+      <small class="hint" style="margin:0">${+g.need} SP away · at least ${+g.min_wins} win${g.min_wins > 1 ? "s" : ""} in a row</small>
+    </div>`;
+  }).join("") : `<div class="hint">You're at Legend, the top. SP is uncapped from here.</div>`;
+}
+$("wr").oninput = e => { wrChoice = +e.target.value; renderForecast(); };
+$("presets").onclick = e => {
+  const b = e.target.closest(".preset");
+  if (b) { wrChoice = +b.dataset.wr; $("wr").value = wrChoice; renderForecast(); }
+};
+
 function renderStats(st) {
+  show("statsLoading", !st.loaded);
+  renderRank(st.rank, st.ladder);
   $("overview").innerHTML = `
     <div class="stat"><b>${+st.games}</b><small>Games</small></div>
     <div class="stat"><b>${st.wr != null ? +st.wr + "%" : "–"}</b><small>Win rate</small></div>
@@ -629,7 +770,7 @@ function renderStats(st) {
       <div class="wl ${g.win === true ? "w" : g.win === false ? "l" : "u"}">${g.win === true ? "W" : g.win === false ? "L" : "?"}</div>
       ${icon(g.champ_id)}
       <div class="grow"><b>${esc(g.champ)}</b> ${+g.k}/${+g.d}/${+g.a}<br><small class="hint">${esc(g.date)} · ${+g.minutes} min</small></div>
-      <div class="num">${+g.cs_min} CS/min${g.kp != null ? `<br>${+g.kp}% KP` : ""}</div>
+      <div class="num">${g.sp != null ? `<span class="spchip ${g.sp >= 0 ? "up" : "down"}">${g.sp >= 0 ? "+" : "−"}${Math.abs(g.sp)} SP</span><br>` : ""}${+g.cs_min} CS/min${g.kp != null ? ` · ${+g.kp}% KP` : ""}</div>
     </div>`).join("") : `<div class="hint">Your games will show up here.</div>`;
 }
 
@@ -722,7 +863,7 @@ setTab(location.hash.slice(1));
 call("GET", "/api/status");
 setInterval(() => {
   call("GET", "/api/status");
-  if (tab === "stats" && statsDirty) loadStats();
+  if (tab === "stats" && (statsDirty || Date.now() - statsAt > 30000)) loadStats();
 }, 1000);
 </script>
 </body>
