@@ -6,3 +6,6 @@ capture/
 
 __pycache__/
 *.pyc
+
+# Local scratch files (screenshots etc.)
+tmp/
