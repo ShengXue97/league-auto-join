@@ -10,6 +10,14 @@ Get a phone notification with **ACCEPT / DECLINE** buttons when your League matc
 
 Check the setup: `python league_remote.py --test` sends a fake MATCH FOUND notification.
 
+## Start with Windows
+League Remote can start hidden when you log in (toggle "Start with Windows" on the
+phone page, or `python league_remote.py --install-startup`). It waits for the League
+client, so SP tracking never misses a game. Its output goes to `league_remote.log`.
+
+**Restarting:** just open League Remote again (`start.bat`). The new copy replaces
+the running one, hidden or not. `stop.bat` stops it.
+
 ## Notifications
 | When | Notification |
 |---|---|
@@ -88,7 +96,7 @@ Works on phone, tablet and desktop browsers.
 ## Notes
 - Your phone must be on the same Wi-Fi as the PC for the buttons to work.
 - `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
-- Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py` and `python tests/test_rank.py` (simulated, no client needed).
+- Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py`, `python tests/test_rank.py` and `python tests/test_autostart.py` (simulated, no client needed).
 - If you miss champ select you dodge (queue lockout, and LP loss in ranked), so only turn on auto-accept if you'll be back in time.
 
 ## Versions

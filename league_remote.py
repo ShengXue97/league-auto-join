@@ -12,6 +12,11 @@ In game: read-only second-screen stats and a personal match history
 (see ingame.py for exactly what is and isn't read).
 
 Standard library only. Run:  python league_remote.py
+  --background          run hidden, log to league_remote.log (used by Start with Windows)
+  --install-startup     start League Remote hidden when you log in to Windows
+  --uninstall-startup   stop starting with Windows
+  --stop                stop the running League Remote
+Opening League Remote while another copy runs replaces that copy (restart).
 """
 
 import base64
@@ -29,16 +34,19 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import autostart
 import ingame
 import rank
 
-__version__ = "1.5.3"
+__version__ = "1.6.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
 RANK_PATH = os.path.join(HERE, "rank_history.jsonl")
 HISTORY_CACHE_PATH = os.path.join(HERE, "history_cache.json")
+PID_PATH = os.path.join(HERE, "league_remote.pid")
+LOG_PATH = os.path.join(HERE, "league_remote.log")
 CLASSIC_QUEUE = 4310  # League Classic 5v5 (Summoner's Journey)
 
 DEFAULT_LOCKFILES = [
@@ -143,7 +151,7 @@ class LCU:
             out = subprocess.run(
                 ["powershell", "-NoProfile", "-Command",
                  "(Get-CimInstance Win32_Process -Filter \"name='LeagueClientUx.exe'\").CommandLine"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, creationflags=autostart.NO_WINDOW,
             ).stdout
             port = out.split("--app-port=")[1].split('"')[0].split()[0]
             token = out.split("--remoting-auth-token=")[1].split('"')[0].split()[0]
@@ -348,6 +356,7 @@ class Watcher:
             s = dict(self.status)
         s["version"] = __version__
         s["cs_goal"] = self.cfg.get("cs_goal", 7.0)
+        s["startup"] = autostart.startup_installed()
         e = self.rank_entry
         s["rank_line"] = f"{rank.describe(e['pos'])['text']} · {e['wins']}W {e['losses']}L" if e else None
         s["auto_accept"] = self.cfg["auto_accept"]
@@ -1120,6 +1129,21 @@ def make_handler(cfg, lcu, watcher):
                     except ValueError as e:
                         watcher.event(f"Phone: {e}")
                         return self._json(409, {"error": str(e)})
+                elif url.path == "/api/shutdown":
+                    # a newer League Remote is taking over; only accepted from this PC
+                    if self.client_address[0] not in ("127.0.0.1", "::1"):
+                        return self._json(403, {"error": "only from this PC"})
+                    log("A new League Remote was started - this one is stopping. You can close this window.")
+                    self._json(200, {"ok": True})
+                    threading.Timer(0.3, lambda: os._exit(0)).start()
+                    return
+                elif url.path == "/api/startup":
+                    on = q.get("on", [""])[0]
+                    want = (on == "1") if on else not autostart.startup_installed()
+                    ok = autostart.install_startup(os.path.abspath(__file__)) if want else autostart.uninstall_startup()
+                    watcher.event(f"Start with Windows {'ON' if autostart.startup_installed() else 'OFF'}")
+                    if not ok:
+                        return self._json(500, {"error": "couldn't change the Startup folder"})
                 elif url.path == "/api/reconnect":
                     lcu.request("POST", "/lol-gameflow/v1/reconnect")
                     watcher.event("Reconnect requested from phone")
@@ -1149,10 +1173,47 @@ def make_handler(cfg, lcu, watcher):
 
 # ---------------------------------------------------------------- main
 
+def background_logging():
+    """pythonw has no console: send output to league_remote.log (kept under ~1 MB)."""
+    try:
+        if os.path.getsize(LOG_PATH) > 1_000_000:
+            os.replace(LOG_PATH, LOG_PATH + ".old")
+    except OSError:
+        pass
+    f = open(LOG_PATH, "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = f
+
+
 def main():
+    args = set(sys.argv[1:])
+    if "--background" in args or sys.stdout is None:
+        background_logging()
+
+    if "--install-startup" in args:
+        ok = autostart.install_startup(os.path.abspath(__file__))
+        print("League Remote will start hidden when you log in to Windows." if ok else "Couldn't add it to Startup.")
+        return
+    if "--uninstall-startup" in args:
+        autostart.uninstall_startup()
+        print("League Remote will no longer start with Windows.")
+        return
+
     cfg = load_config()
     ip = lan_ip()
     control_url = f"http://{ip}:{cfg['port']}"
+
+    # Only one League Remote at a time: a new one replaces the running one (= restart).
+    problem = autostart.takeover(cfg["port"], PID_PATH, log)
+    if problem:
+        print(problem)
+        return
+    if "--stop" in args:
+        try:
+            os.remove(PID_PATH)
+        except OSError:
+            pass
+        print("League Remote stopped.")
+        return
 
     lcu = LCU(cfg.get("lockfile", ""))
     notifier = Notifier(cfg, control_url)
@@ -1163,9 +1224,10 @@ def main():
     try:
         server = ThreadingHTTPServer(("0.0.0.0", cfg["port"]), make_handler(cfg, lcu, watcher))
     except OSError:
-        print(f"Port {cfg['port']} is already in use - is League Remote already running? Close it first.")
+        print(f"Port {cfg['port']} is already in use by another program. Change \"port\" in config.json.")
         return
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    autostart.write_pid(PID_PATH)
 
     print("=" * 64)
     print(f" League Remote Accept v{__version__} is running")
@@ -1174,6 +1236,8 @@ def main():
     print(f" ntfy topic         : {cfg['ntfy_topic']}")
     print(f"   -> install the 'ntfy' app on your phone and subscribe to it")
     print(f" Auto-accept        : {'ON' if cfg['auto_accept'] else 'OFF'}")
+    print(f" Start with Windows : {'ON' if autostart.startup_installed() else 'OFF'}"
+          f"{'  (running hidden, log: league_remote.log)' if '--background' in args else ''}")
     print(" Phone must be on the same Wi-Fi as this PC. Ctrl+C to quit.")
     print("=" * 64)
 

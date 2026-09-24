@@ -3,6 +3,20 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.6.0] - 2026-09-24
+### Added
+- Start with Windows: League Remote starts hidden (no console window) when you
+  log in, and waits for the League client. Toggle it on the phone page, or run
+  `--install-startup` / `--uninstall-startup`. Hidden runs log to
+  `league_remote.log`.
+- One League Remote at a time: opening it while another copy runs replaces that
+  copy (a restart with your latest changes). The old copy is asked to stop
+  (`/api/shutdown`, accepted only from this PC) and force-stopped if it's an
+  older version without that. Programs that aren't League Remote are never
+  stopped; if one holds the port, League Remote says so and exits.
+- `stop.bat` / `--stop` to stop the hidden copy.
+- `tests/test_autostart.py`: real processes on a spare port.
+
 ## [1.5.3] - 2026-09-24
 ### Fixed
 - Wrong scroll position when loading or refreshing the page: the browser restored

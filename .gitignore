@@ -16,3 +16,8 @@ rank_history.jsonl.last
 
 # Match history saved beyond the client's 100-game limit
 history_cache.json
+
+# Runtime files
+league_remote.pid
+league_remote.log
+league_remote.log.old
