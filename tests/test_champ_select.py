@@ -50,6 +50,10 @@ class FakeLCU:
             self.calls.append((method, path, body))
         if path == "/lol-gameflow/v1/gameflow-phase":
             return "ChampSelect"
+        if path == "/lol-lobby/v2/lobby":
+            return {"localMember": {"firstPositionPreference": "TOP", "secondPositionPreference": "JUNGLE",
+                                    "thirdPositionPreference": "MIDDLE", "fourthPositionPreference": "BOTTOM",
+                                    "fifthPositionPreference": "UTILITY"}}
         if path == "/lol-game-data/assets/v1/champion-summary.json":
             return [{"id": -1, "name": "None"}] + CHAMPS
         if path == "/lol-champ-select/v1/session":
@@ -282,7 +286,25 @@ start = [n for n in sent if n[0] == "CHAMP SELECT STARTED"]
 check(len(start) == 1 and labels(start[0]) == ["Open", "Hover Pantheon", "Ask #1 to swap"],
       "start alert: Hover Pantheon + Ask #1 to swap")
 
-# ------------------------------------------------------------ 6. not your turn
+# ------------------------------------------------------------ 6. Aegis of Valor
+cfg, lcu, w, sent = make()
+for a in lcu.all_actions():
+    a["isInProgress"] = False
+w.last_phase = "Matchmaking"
+w.rank = __import__("rank").RankTracker(os.path.join(__import__("tempfile").mkdtemp(), "r.jsonl"))
+w.tick()
+cs = w.snapshot()["cs"]
+check(cs["aegis"] and cs["aegis"]["role_name"] == "Mid" and cs["aegis"]["pref"] == 3 and cs["aegis"]["bonus"] == 40,
+      f"assigned Mid = 3rd preference -> Aegis +40% ({cs['aegis']})")
+check(cs["aegis"]["base_win"] is None, "no SP estimate in the banner before your win SP is learned")
+start = [n for n in sent if n[0] == "CHAMP SELECT STARTED"]
+check(start and "Aegis of Valor possible: Mid is your #3 role" in start[0][1], "start alert mentions Aegis")
+check(w.game_context == {"role": "MIDDLE", "pref": 3, "aegis": cs["aegis"]}, "role remembered for SP tracking")
+lcu.team[ME]["assignedPosition"] = "jungle"
+w.tick()
+check(w.snapshot()["cs"]["aegis"] is None and w.game_context["pref"] == 2, "2nd preference -> no Aegis")
+
+# ------------------------------------------------------------ 7. not your turn
 cfg, lcu, w, sent = make()
 lcu.actions[0][0]["isInProgress"] = False
 try:

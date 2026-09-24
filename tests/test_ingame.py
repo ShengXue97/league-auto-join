@@ -241,13 +241,19 @@ check(len(changes) == 1 and changes[0]["delta"] == 21 and changes[0]["game_id"] 
 payload = w.stats_payload()
 check(payload["recent"][0]["id"] == "555" and payload["recent"][0]["sp"] == 21, "recent game shows +21 SP")
 check(payload["rank"]["rank"]["text"] == "Platinum I 43 SP", "rank in stats payload")
-check([p["label"] for p in payload["rank"]["presets"]] == ["Season", "Pantheon (5 games)"],
-      f"win-rate presets: {payload['rank']['presets']}")
+check("presets" not in payload["rank"] and payload["rank"]["sp"]["win"] == 21 and payload["rank"]["sp"]["loss"] is None,
+      "one tracked win: real +21 shown, no forecast until a loss is tracked")
+check("games to" not in res[0][1], "alert makes no forecast without real SP data")
 w.refresh_history_and_rank()
 check(len(w.rank.changes()) == 1 and len([x for x in sent if "VICTORY" in x[0]]) == 1, "no duplicate on re-refresh")
 lcu.phase = "Lobby"
 w.tick()
 check(len([x for x in sent if "VICTORY" in x[0]]) == 1, "no fallback duplicate after leaving the game")
+
+# Aegis-role win: alert names the role and bonus
+w.send_result(None, {"delta": 40, "win": True, "games": 1, "pref": 5, "role": "UTILITY", "after": {"pos": 1983}})
+check("Aegis of Valor role (Support, your #5): up to +100%" in sent[-1][1] and sent[-1][0] == "VICTORY +40 SP",
+      f"Aegis alert line: {sent[-1][:2]}")
 
 # no SP change (e.g. not a ranked game) -> result sent after a timeout, without SP
 cfg, lcu, w, sent = make()

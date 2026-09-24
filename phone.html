@@ -195,6 +195,13 @@
   .sprow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #ffffff10; font-size: 14px; }
   .sprow:first-child { border-top: 0; }
 
+  /* ---------- aegis ---------- */
+  .aegis { border-color: var(--gold); background: linear-gradient(135deg, #c8aa6e22, var(--panel) 60%); }
+  .aegis b.t { color: var(--gold); font-size: 17px; }
+  .prefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .prefs span { padding: 4px 10px; border-radius: 12px; background: var(--panel2); font-size: 13px; }
+  .prefs span.boost { border: 1px solid var(--gold); color: var(--gold); }
+
   /* ---------- stats ---------- */
   .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
   .spark { width: 100%; height: 70px; display: block; margin-top: 8px; }
@@ -241,6 +248,7 @@
 
     <!-- champ select: actions -->
     <div class="turn" id="turn" hidden></div>
+    <div class="card aegis" id="aegisCs" hidden></div>
     <div class="card swapcard" id="swapIn" hidden>
       <div id="swapInText"></div>
       <div class="btns">
@@ -341,18 +349,24 @@
     </div>
     <div class="card" id="climbCard" hidden>
       <div class="label">Climb forecast</div>
-      <div class="presets" id="presets"></div>
-      <div class="slider-row">
-        <input type="range" id="wr" min="30" max="75" step="1" aria-label="Win rate">
-        <b id="wrVal"></b>
+      <div id="wrBox">
+        <div class="presets" id="presets"></div>
+        <div class="slider-row">
+          <input type="range" id="wr" min="30" max="75" step="1" aria-label="Win rate">
+          <b id="wrVal"></b>
+        </div>
+        <div class="hint" id="evLine" style="margin:6px 0 8px"></div>
       </div>
-      <div class="hint" id="evLine" style="margin:6px 0 8px"></div>
       <div id="goals"></div>
       <div class="hint" id="dropLine" style="margin-top:10px"></div>
     </div>
     <div class="card" id="scenCard" hidden>
       <div class="label">Next games</div>
       <table class="scen" id="scen"></table>
+    </div>
+    <div class="card aegis" id="aegisCard" hidden>
+      <div class="label">Aegis of Valor</div>
+      <div id="aegisBody"></div>
     </div>
     <div class="card" id="spHistCard" hidden>
       <div class="label">SP history</div>
@@ -439,6 +453,17 @@ function renderChampSelect(cs) {
   turn.textContent = act && act.in_progress ? `YOUR TURN TO ${isBan ? "BAN" : "PICK"}!`
     : act ? `Your ${isBan ? "ban" : "pick"} is coming up`
     : cs.done ? "✔ You're locked in" : "Waiting for others…";
+
+  const ae = cs.aegis;
+  show("aegisCs", !!ae);
+  if (ae) {
+    const base = ae.base_win;
+    const sp = base ? ` (about +${Math.round(base * (1 + ae.bonus / 100))} instead of +${base})` : "";
+    $("aegisCs").innerHTML = `<b class="t">🛡 Aegis of Valor possible</b>
+      <div class="hint" style="color:var(--text)">You're <b>${esc(ae.role_name)}</b>, your #${+ae.pref} role.
+      If you win, SP can be <b>+${+ae.bonus}%</b>${sp}.</div>
+      <div class="hint">Riot: occasional, not guaranteed. Don't swap roles or you lose it.</div>`;
+  }
 
   const sin = cs.swap_in;
   show("swapIn", !!sin);
@@ -625,7 +650,7 @@ function render(s) {
   ["turn", "teamCard"].forEach(id => show(id, inCs));
   if (inCs) renderChampSelect(s.cs);
   else {
-    ["swapIn", "myChamps", "pickerCard", "lock"].forEach(id => show(id, false));
+    ["swapIn", "myChamps", "pickerCard", "lock", "aegisCs"].forEach(id => show(id, false));
     selected = 0; selectedFor = null; lastCs = null; lastGridKey = "";
   }
 
@@ -686,14 +711,17 @@ function renderRank(r, ladder) {
   $("rankSub").textContent = sub.join(" · ");
   $("rankSp").textContent = rk.sp;
   $("rankBar").style.width = (rk.emblem === "Legend" ? 100 : Math.min(100, rk.sp)) + "%";
-  $("winSp").textContent = `+${r.sp.win}`;
-  $("lossSp").textContent = `−${r.sp.loss}`;
-  const learned = r.sp.win_learned && r.sp.loss_learned;
-  $("spNote").textContent = learned
-    ? "Average of your recent tracked games."
-    : "Estimate. Riot doesn't store past SP changes, so this learns from your games from now on " +
-      `(${r.sp.tracked_wins}/3 wins, ${r.sp.tracked_losses}/3 losses tracked).`;
+  $("winSp").textContent = r.sp.win != null ? `+${r.sp.win}` : "?";
+  $("lossSp").textContent = r.sp.loss != null ? `−${r.sp.loss}` : "?";
+  const n = (k, w) => `${k} ${k === 1 ? w : w === "loss" ? "losses" : w + "s"}`;
+  $("spNote").textContent = r.sp.win == null || r.sp.loss == null
+    ? "Riot doesn't store how much SP past games gave, so League Remote learns it from your games from now on " +
+      `(${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")} tracked so far). ` +
+      "Forecasts appear once it has seen at least one win and one loss."
+    : r.sp.confident ? `Average of your last ${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")}.`
+    : `Rough: based on only ${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")} so far.`;
 
+  show("wrBox", r.sp_known);
   $("presets").innerHTML = (r.presets || []).map(p =>
     `<button class="preset" data-wr="${+p.wr}">${esc(p.label)}: ${+p.wr}%</button>`).join("");
   if (wrChoice == null) wrChoice = r.win_rate;
@@ -704,6 +732,7 @@ function renderRank(r, ladder) {
     ? `Division IV is the floor: losses can't drop you out of ${rk.emblem}.`
     : r.losses_to_drop ? `${r.losses_to_drop} loss${r.losses_to_drop > 1 ? "es" : ""} in a row would drop you a division.` : "";
 
+  show("scenCard", r.scenarios.length);
   $("scen").innerHTML = r.scenarios.map(s => `
     <tr><td>${s.n} ${s.n > 1 ? "games" : "game"}</td>
       <td class="w">▲ ${esc(s.win)}</td><td class="l">▼ ${esc(s.loss)}</td></tr>`).join("");
@@ -711,7 +740,7 @@ function renderRank(r, ladder) {
   $("spHist").innerHTML = r.history.length ? r.history.map(c => `
     <div class="sprow">
       <span class="spchip ${c.delta >= 0 ? "up" : "down"}">${c.delta >= 0 ? "+" : "−"}${Math.abs(c.delta)}</span>
-      <div style="flex:1;min-width:0" class="ellipsis">${c.champ ? esc(c.champ) + " · " : ""}${c.games > 1 ? `${+c.games} games · ` : ""}${esc(c.after)}</div>
+      <div style="flex:1;min-width:0" class="ellipsis">${c.pref >= 3 && c.win ? "🛡 " : ""}${c.champ ? esc(c.champ) + " · " : ""}${c.role ? esc(c.role) + " · " : ""}${c.games > 1 ? `${+c.games} games · ` : ""}${esc(c.after)}</div>
       <small class="hint" style="margin:0">${esc(c.time)}</small>
     </div>`).join("")
     : `<div class="hint">SP changes appear here after your next Classic game. Riot doesn't keep this history, so League Remote records it while it's running.</div>`;
@@ -720,18 +749,24 @@ function renderRank(r, ladder) {
 function renderForecast() {
   const r = lastRank;
   if (!r) return;
+  const known = r.sp_known;
   const p = wrChoice / 100, G = r.sp.win, L = r.sp.loss;
-  const ev = p * G - (1 - p) * L;
-  $("wrVal").textContent = wrChoice + "%";
-  document.querySelectorAll(".preset").forEach(b => b.classList.toggle("on", +b.dataset.wr === +wrChoice));
-  $("evLine").textContent = `At ${wrChoice}% you average ${ev >= 0 ? "+" : "−"}${Math.abs(ev).toFixed(1)} SP per game. ` +
-    `Break-even is ${r.break_even_wr}%.`;
+  const ev = known ? p * G - (1 - p) * L : null;
+  if (known) {
+    $("wrVal").textContent = wrChoice + "%";
+    document.querySelectorAll(".preset").forEach(b => b.classList.toggle("on", +b.dataset.wr === +wrChoice));
+    $("evLine").textContent = `At ${wrChoice}% you average ${ev >= 0 ? "+" : "−"}${Math.abs(ev).toFixed(1)} SP per game. ` +
+      `Break-even is ${r.break_even_wr}%.`;
+  }
   $("goals").innerHTML = r.goals.length ? r.goals.map(g => {
     const games = ev > 0 ? Math.ceil(g.need / ev) : null;
+    const right = !known ? "" : games ? `~${games} games` : "not climbing at this WR";
+    const detail = [`${+g.need} SP away`];
+    if (g.min_wins) detail.push(`at least ${+g.min_wins} win${g.min_wins > 1 ? "s" : ""} in a row`);
     return `<div class="goal">
       <div class="gname${g.emblem ? " emb" : ""}">${esc(g.name)}</div>
-      <div class="gnum${games ? "" : " no"}">${games ? `~${games} games` : "not climbing at this WR"}</div>
-      <small class="hint" style="margin:0">${+g.need} SP away · at least ${+g.min_wins} win${g.min_wins > 1 ? "s" : ""} in a row</small>
+      <div class="gnum${games || !known ? "" : " no"}">${right}</div>
+      <small class="hint" style="margin:0">${detail.join(" · ")}</small>
     </div>`;
   }).join("") : `<div class="hint">You're at Legend, the top. SP is uncapped from here.</div>`;
 }
@@ -741,9 +776,29 @@ $("presets").onclick = e => {
   if (b) { wrChoice = +b.dataset.wr; $("wr").value = wrChoice; renderForecast(); }
 };
 
+function renderAegis(r, prefs) {
+  show("aegisCard", !!r);
+  if (!r) return;
+  const rules = r.aegis.rules;
+  const order = prefs && prefs.length
+    ? `<div class="prefs">${prefs.map((p, i) => `<span class="${rules[i + 1] ? "boost" : ""}">#${i + 1} ${esc(p)}${rules[i + 1] ? ` +${rules[i + 1]}%` : ""}</span>`).join("")}</div>`
+    : `<div class="hint">Your role order shows up once you're in a Classic lobby.</div>`;
+  const seen = r.aegis.seen.length ? r.aegis.seen.map(a => `
+    <div class="sprow"><span class="spchip up">+${+a.delta}</span>
+      <div style="flex:1;min-width:0">${esc(a.role)} (#${+a.pref}) win${a.observed_bonus != null ? ` · ${a.observed_bonus >= 0 ? "+" : ""}${+a.observed_bonus}% vs your usual win` : ""}</div>
+      <small class="hint" style="margin:0">${esc(a.time)}</small></div>`).join("")
+    : `<div class="hint">No wins tracked in a #3–#5 role yet.</div>`;
+  $("aegisBody").innerHTML = `
+    <div class="hint" style="color:var(--text)">Autofilled into your #3, #4 or #5 role and you <b>win</b>: SP +40%, +70% or +100%.
+      Occasional, not guaranteed, and lost if you swap roles in champ select.</div>
+    ${order}
+    <div class="label" style="margin-top:12px">Tracked Aegis-role wins</div>${seen}`;
+}
+
 function renderStats(st) {
   show("statsLoading", !st.loaded);
   renderRank(st.rank, st.ladder);
+  renderAegis(st.rank, st.prefs);
   $("overview").innerHTML = `
     <div class="stat"><b>${+st.games}</b><small>Games</small></div>
     <div class="stat"><b>${st.wr != null ? +st.wr + "%" : "–"}</b><small>Win rate</small></div>

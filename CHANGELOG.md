@@ -3,6 +3,26 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.5.0] - 2026-09-24
+### Added
+- Aegis of Valor: League Remote reads your 5 role preferences from the lobby
+  and, in champ select, shows "Aegis of Valor possible" when you're assigned
+  your #3/#4/#5 role (+40% / +70% / +100% SP on a win; occasional, lost if you
+  swap roles). Also in the champ select alert and the post-game alert.
+- SP changes are saved with your role and preference; wins in Aegis roles are
+  kept out of your normal SP-per-win average and shown separately with the
+  observed bonus. Stats tab has an Aegis of Valor card with your role order.
+
+### Changed
+- No made-up SP numbers: the old +/-20 default is gone. "If you win / lose",
+  games-to-goal, scenarios, break-even and demotion warnings only appear once
+  real SP changes are tracked (marked "rough" until 3 wins and 3 losses).
+  SP needed for each goal is always shown.
+
+### Fixed
+- Champ select would crash when checking Aegis (a local variable shadowed the
+  rank module).
+
 ## [1.4.0] - 2026-09-24
 ### Added
 - Classic rank (Summoner's Journey): emblem, division and SP from the client,

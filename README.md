@@ -62,7 +62,13 @@ or tap recent form / season / your main champion, to see how it changes.
 
 Riot only stores your *current* SP, not what each game gave, so League Remote
 records every change while it runs (`rank_history.jsonl`) and learns your real
-SP per win and loss. Until 3 wins and 3 losses are tracked it assumes +/-20.
+SP per win and loss. Nothing SP-based is guessed: win/loss SP and the forecast
+appear after your first tracked win and loss (marked rough until 3 of each).
+
+**Aegis of Valor:** if you're autofilled into your #3, #4 or #5 role, a win can
+give +40%, +70% or +100% SP (occasional, and lost if you swap roles). Champ
+select shows when it's possible, and those wins are tracked separately so they
+don't inflate your normal SP per win.
 
 Match stats (win rate, champions, CS/min trend, recent games) come from Riot's
 official match history in the client (last ~100 games, Classic only).

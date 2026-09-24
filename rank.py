@@ -12,7 +12,8 @@ names map by order (IRON = Salt, BRONZE = Wood, ... MASTER and above = Legend).
 
 The client only knows your *current* SP, not what each past game gave, so this
 module records a snapshot before and after every game and learns your typical
-SP per win / loss from those.
+SP per win / loss from those. Nothing SP-based is predicted until there is real
+tracked data - no made-up defaults.
 """
 
 import json
@@ -27,9 +28,25 @@ APEX_TIERS = {"MASTER", "GRANDMASTER", "CHALLENGER"}
 DIVS = ["IV", "III", "II", "I"]
 LEGEND = len(EMBLEMS) * 400  # position where Legend starts
 
-DEFAULT_WIN_SP = 20   # used until enough games are tracked
-DEFAULT_LOSS_SP = 20
-LEARN_MIN = 3         # tracked wins/losses needed before trusting the averages
+CONFIDENT = 3         # tracked wins/losses before an average stops being "rough"
+
+# Aegis of Valor (Riot, "League Classic - Progression"): autofilled into your 3rd/4th/5th
+# preferred position and you WIN -> SP gain +40% / +70% / +100%. Riot also says it's an
+# occasional bonus, not guaranteed, and it's lost if you swap roles in champ select.
+AEGIS_BONUS = {3: 40, 4: 70, 5: 100}
+ROLE_NAMES = {"TOP": "Top", "JUNGLE": "Jungle", "MIDDLE": "Mid", "BOTTOM": "Bot", "UTILITY": "Support"}
+
+
+def aegis_for(role, prefs):
+    """Assigned role + preference order (5 roles) -> Aegis info, or None if not eligible."""
+    role = (role or "").upper()
+    prefs = [p.upper() for p in prefs or []]
+    if not role or role not in prefs:
+        return None
+    n = prefs.index(role) + 1
+    if n not in AEGIS_BONUS:
+        return None
+    return {"role": role, "role_name": ROLE_NAMES.get(role, role.title()), "pref": n, "bonus": AEGIS_BONUS[n]}
 LEARN_LAST = 10       # average over the most recent N
 
 
@@ -127,8 +144,9 @@ class RankTracker:
                     pass
         return out
 
-    def update(self, entry, game=None):
-        """Feed the latest Classic entry. Returns the new change record when a game finished."""
+    def update(self, entry, game=None, context=None):
+        """Feed the latest Classic entry. Returns the new change record when a game finished.
+        context: {"role", "pref"} of the game that just ended (for Aegis of Valor)."""
         if entry is None:
             return None
         prev, self.last = (self.last or self._load_last()), entry
@@ -149,25 +167,42 @@ class RankTracker:
             "game_id": str(game["id"]) if game and played == 1 else None,
             "champ": game.get("champ") if game and played == 1 else None,
         }
+        if context and played == 1:
+            change["role"], change["pref"] = context.get("role"), context.get("pref")
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(change) + "\n")
         return change
 
 
 def learned_sp(changes):
-    """Typical SP per win and per loss from single-game changes (with defaults until learned)."""
+    """Average SP per win and per loss from tracked single games (None until tracked)."""
     single = [c for c in changes if c.get("games") == 1 and c.get("win") is not None]
-    wins = [c["delta"] for c in single if c["win"] and c["delta"] > 0][-LEARN_LAST:]
+    # wins in an Aegis-eligible role may be boosted - keep them out of your normal win SP
+    wins = [c["delta"] for c in single if c["win"] and c["delta"] > 0
+            and (c.get("pref") or 0) not in AEGIS_BONUS][-LEARN_LAST:]
     # a loss at the emblem floor shows 0 - it says nothing about SP per loss
     losses = [-c["delta"] for c in single if not c["win"] and c["delta"] < 0][-LEARN_LAST:]
     return {
-        "win": round(sum(wins) / len(wins)) if len(wins) >= LEARN_MIN else DEFAULT_WIN_SP,
-        "loss": round(sum(losses) / len(losses)) if len(losses) >= LEARN_MIN else DEFAULT_LOSS_SP,
-        "win_learned": len(wins) >= LEARN_MIN,
-        "loss_learned": len(losses) >= LEARN_MIN,
+        "win": round(sum(wins) / len(wins)) if wins else None,
+        "loss": round(sum(losses) / len(losses)) if losses else None,
+        "confident": len(wins) >= CONFIDENT and len(losses) >= CONFIDENT,
         "tracked_wins": len(wins),
         "tracked_losses": len(losses),
     }
+
+
+def aegis_summary(changes, base_win):
+    """Tracked wins in Aegis-eligible roles, compared with your normal win SP (when known)."""
+    seen = []
+    for c in changes:
+        if c.get("games") == 1 and c.get("win") and (c.get("pref") or 0) in AEGIS_BONUS:
+            seen.append({
+                "time": c["time"], "role": ROLE_NAMES.get(c.get("role") or "", ""), "pref": c["pref"],
+                "delta": c["delta"], "max_bonus": AEGIS_BONUS[c["pref"]],
+                # how much above your usual win this game was, e.g. +95%
+                "observed_bonus": round(100 * (c["delta"] / base_win - 1)) if base_win else None,
+            })
+    return {"rules": AEGIS_BONUS, "seen": list(reversed(seen[-10:]))}
 
 
 def win_rate(entry, recent_results, recent_n=20):
@@ -186,7 +221,8 @@ def predict(entry, changes, recent_results):
     sp = learned_sp(changes)
     g, l = sp["win"], sp["loss"]
     p, basis, season_wr = win_rate(entry, recent_results)
-    ev = p * g - (1 - p) * l
+    known = g is not None and l is not None  # SP forecasts need both, from real games
+    ev = p * g - (1 - p) * l if known else None
 
     targets = []
     if pos < LEGEND:
@@ -203,21 +239,18 @@ def predict(entry, changes, recent_results):
             "name": "Legend" if t >= LEGEND else short(t),
             "emblem": t % 400 == 0 or t >= LEGEND,
             "need": need,
-            "min_wins": math.ceil(need / g) if g > 0 else None,
-            "games": math.ceil(need / ev) if ev > 0 else None,
+            "min_wins": math.ceil(need / g) if g else None,
+            "games": math.ceil(need / ev) if ev and ev > 0 else None,
         })
 
     floor = emblem_floor(pos)
     div_base = (pos // 100) * 100
     losses_to_drop = None
-    if pos < LEGEND and div_base > floor and l > 0:
+    if pos < LEGEND and div_base > floor and l:
         losses_to_drop = (pos - div_base) // l + 1
 
-    scenarios = []
-    for n in (1, 2, 3, 5):
-        scenarios.append({"n": n, "win": describe(min(pos + n * g, 10 ** 6))["text"] if pos + n * g < LEGEND
-                          else describe(pos + n * g)["text"],
-                          "loss": describe(after_losses(pos, n, l))["text"]})
+    scenarios = [{"n": n, "win": describe(pos + n * g)["text"], "loss": describe(after_losses(pos, n, l))["text"]}
+                 for n in (1, 2, 3, 5)] if known else []
 
     return {
         "rank": describe(pos),
@@ -227,14 +260,17 @@ def predict(entry, changes, recent_results):
         "sp": sp,
         "win_rate": round(100 * p),
         "win_rate_basis": basis,
-        "expected_per_game": round(ev, 1),
-        "break_even_wr": round(100 * l / (g + l)) if g + l else 50,
+        "sp_known": known,
+        "expected_per_game": round(ev, 1) if known else None,
+        "break_even_wr": round(100 * l / (g + l)) if known and g + l else None,
         "goals": goals,
         "losses_to_drop": losses_to_drop,
         "at_floor": pos < LEGEND and div_base == floor,
         "scenarios": scenarios,
         "history": [{"time": c["time"], "delta": c["delta"], "win": c.get("win"), "games": c.get("games"),
-                     "champ": c.get("champ"), "after": describe(c["after"]["pos"])["text"]}
+                     "champ": c.get("champ"), "role": ROLE_NAMES.get(c.get("role") or "", ""),
+                     "pref": c.get("pref"), "after": describe(c["after"]["pos"])["text"]}
                     for c in reversed(changes[-15:])],
+        "aegis": aegis_summary(changes, g),
         "trend": [c["after"]["pos"] for c in changes[-30:]],
     }

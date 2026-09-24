@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 import ingame
 import rank
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -250,7 +250,7 @@ class Notifier:
         )
 
 
-    def champ_select_started(self, seconds, hover_fav, swap_up):
+    def champ_select_started(self, seconds, hover_fav, swap_up, aegis=None):
         """hover_fav: (id, name) or None. swap_up: dict from champ_select_state or None."""
         actions = [{"action": "view", "label": "Open", "url": self.control_url, "clear": True}]
         if hover_fav:
@@ -260,6 +260,9 @@ class Notifier:
             actions.append({"action": "http", "label": f"Ask #{swap_up['order']} to swap", "method": "POST",
                             "url": f"{self.control_url}/api/cs/swap-up"})
         msg = f"~{seconds}s left in this phase." if seconds else "Get back to your PC!"
+        if aegis:
+            msg += (f"\nAegis of Valor possible: {aegis['role_name']} is your #{aegis['pref']} role - "
+                    f"a win can give +{aegis['bonus']}% SP. Don't swap roles.")
         self.send("CHAMP SELECT STARTED", msg, priority=5, tags=["runner", "video_game"], actions=actions)
 
     def swap_request(self, swap):
@@ -316,6 +319,9 @@ class Watcher:
         self._pending_lock = threading.Lock()
         self._bg_next = 0
         self._watch_rank_until = 0  # poll rank fast for a while after a game
+        self.prefs = []             # my 5 position preferences, 1st..5th (from the lobby)
+        self._prefs_at = 0
+        self.game_context = None    # {"role", "pref", ...} of the current/last game, for SP tracking
         self._reset_game()
 
     def _reset_game(self, game_id=None, pool=()):
@@ -372,6 +378,8 @@ class Watcher:
         phase = self.lcu.request("GET", "/lol-gameflow/v1/gameflow-phase") or "None"
         st = {"connected": True, "phase": phase}
 
+        if phase in ("Lobby", "Matchmaking", "ReadyCheck", "ChampSelect") and time.time() - self._prefs_at > 20:
+            self.read_prefs()
         if phase in ("Matchmaking", "ReadyCheck"):
             search = self.lcu.request("GET", "/lol-matchmaking/v1/search") or {}
             st["time_in_queue"] = search.get("timeInQueue")
@@ -386,6 +394,12 @@ class Watcher:
             st["cs"] = cs
             st["cs_phase"] = cs.get("phase")
             st["cs_time_left"] = cs.get("time_left")
+            me_p = next((p for p in cs["team"] if p["me"]), {})
+            if me_p.get("pos"):
+                self.game_context = {"role": me_p["pos"].upper(), "pref": (cs.get("aegis") or {}).get("pref")
+                                     or (self.prefs.index(me_p["pos"].upper()) + 1
+                                         if me_p["pos"].upper() in self.prefs else None),
+                                     "aegis": cs.get("aegis")}
             self.maybe_notify_turn(cs)
             self.maybe_notify_swaps(cs)
             self.maybe_notify_fav_lost(cs)
@@ -415,6 +429,23 @@ class Watcher:
             self.last_phase = phase
         elif phase not in ("None", "Lobby", "Matchmaking", "InProgress"):
             self.record_changes(phase)
+
+    def read_prefs(self):
+        self._prefs_at = time.time()
+        try:
+            lm = (self.lcu.request("GET", "/lol-lobby/v2/lobby") or {}).get("localMember") or {}
+        except urllib.error.HTTPError:
+            return
+        prefs = [lm.get(f"{n}PositionPreference") for n in ("first", "second", "third", "fourth", "fifth")]
+        prefs = [p for p in prefs if p and p not in ("UNSELECTED", "NONE", "FILL")]
+        if prefs:
+            self.prefs = prefs
+
+    def aegis_now(self, role):
+        ae = rank.aegis_for(role, self.prefs)
+        if ae:
+            ae["base_win"] = rank.learned_sp(self.rank.changes())["win"]  # None until learned
+        return ae
 
     # ------------------------------------------------ champion select
 
@@ -470,7 +501,7 @@ class Watcher:
             c = a.get("actorCellId")
             if a.get("type") == "pick" and c in allies and c not in order:
                 order.append(c)
-        rank = {c: i + 1 for i, c in enumerate(order)}
+        pick_rank = {c: i + 1 for i, c in enumerate(order)}
         swaps = {sw.get("cellId"): sw for sw in s.get("pickOrderSwaps") or []}
 
         def player(p):
@@ -483,7 +514,7 @@ class Watcher:
                 "pos": (p.get("assignedPosition") or "").lower(),
                 "name": p.get("gameName") or "",
                 "me": cell == me,
-                "order": rank.get(cell),
+                "order": pick_rank.get(cell),
                 "swap_id": sw.get("id"),
                 "swap_state": sw.get("state"),
             }
@@ -545,6 +576,8 @@ class Watcher:
             "pick_action": {"id": my_pick.get("id"), "champ": my_pick.get("championId") or 0,
                             "in_progress": bool(my_pick.get("isInProgress"))} if my_pick else None,
             "done": not mine and me in locked_cells,
+            "aegis": self.aegis_now(me_p.get("pos")),
+            "prefs": [rank.ROLE_NAMES.get(p, p) for p in self.prefs],
             "team": team,
             "my_order": my_order,
             "swap_in": swap_in,
@@ -755,7 +788,9 @@ class Watcher:
         classic = [r for r in self.history if r.get("queue") == CLASSIC_QUEUE]
         known = {c.get("game_id") for c in self.rank.changes()}
         latest = classic[-1] if classic and classic[-1]["id"] not in known else None
-        change = self.rank.update(entry, latest)
+        change = self.rank.update(entry, latest, self.game_context)
+        if change:
+            self.game_context = None
         if change:
             self.on_rank_change(change)
 
@@ -814,6 +849,12 @@ class Watcher:
             title += f" {sign}{change['delta']} SP"
             lines.append(f"Now {rank.describe(change['after']['pos'])['text']}")
             pred = self.rank_prediction()
+            if change.get("win") and (change.get("pref") or 0) in rank.AEGIS_BONUS:
+                role = rank.ROLE_NAMES.get(change.get("role") or "", "")
+                base = (pred or {}).get("sp", {}).get("win")
+                usual = f" - your usual win is +{base}" if base else ""
+                lines.append(f"Aegis of Valor role ({role}, your #{change['pref']}): "
+                             f"up to +{rank.AEGIS_BONUS[change['pref']]}%{usual}")
             goal = next((g for g in (pred or {}).get("goals", []) if g["emblem"]), None)
             if goal and goal["games"]:
                 lines.append(f"~{goal['games']} games to {goal['name']} (at {pred['win_rate']}% WR)")
@@ -835,7 +876,7 @@ class Watcher:
         for r in st["recent"]:
             r["sp"] = deltas.get(r["id"])
         st["rank"] = self.rank_prediction()
-        if st["rank"]:
+        if st["rank"] and st["rank"]["sp_known"]:
             # win-rate presets for the what-if slider: recent, season, and your main champion
             presets = []
             if st["rank"]["win_rate_basis"] != "this season":  # recent form, e.g. "Last 20 games"
@@ -846,6 +887,7 @@ class Watcher:
                 presets.append({"label": f"{main['champ']} ({main['games']} games)", "wr": main["wr"]})
             st["rank"]["presets"] = presets
         st["ladder"] = self.ladder
+        st["prefs"] = [rank.ROLE_NAMES.get(p, p) for p in self.prefs]
         st["loaded"] = bool(self.history) or self.rank_entry is not None
         return st
 
@@ -944,7 +986,7 @@ class Watcher:
                             if f["status"] == "available"), None)
                 self.notifier.champ_select_started(st.get("cs_time_left"),
                                                    fav if cs.get("pick_action") else None,
-                                                   cs.get("swap_up"))
+                                                   cs.get("swap_up"), cs.get("aegis"))
         elif new == "Matchmaking" and old != "ReadyCheck":
             self.event("Entered queue")
 

@@ -34,7 +34,8 @@ check(rank.after_losses(p4, 3, 20) == rank.position("PLATINUM", "IV", 0), "Divis
 check(rank.after_losses(rank.position("MASTER", "I", 30), 2, 20) == rank.LEGEND, "Legend floors at 0 SP")
 
 # learning SP per game
-check(rank.learned_sp([])["win"] == rank.DEFAULT_WIN_SP and not rank.learned_sp([])["win_learned"], "defaults before learning")
+empty = rank.learned_sp([])
+check(empty["win"] is None and empty["loss"] is None and not empty["confident"], "no made-up SP before any tracked game")
 
 
 def ch(delta, win, games=1):
@@ -44,8 +45,10 @@ def ch(delta, win, games=1):
 changes = [ch(24, True), ch(22, True), ch(-17, False), ch(26, True), ch(-19, False), ch(0, False), ch(-18, False),
            ch(-60, None, games=3)]
 sp = rank.learned_sp(changes)
-check(sp["win"] == 24 and sp["win_learned"], f"learned win SP = avg(24,22,26) (got {sp['win']})")
-check(sp["loss"] == 18 and sp["loss_learned"], f"learned loss SP ignores floor 0s and multi-game (got {sp['loss']})")
+check(sp["win"] == 24, f"learned win SP = avg(24,22,26) (got {sp['win']})")
+check(sp["loss"] == 18 and sp["confident"], f"learned loss SP ignores floor 0s and multi-game (got {sp['loss']})")
+one = rank.learned_sp([ch(21, True)])
+check(one["win"] == 21 and one["loss"] is None and not one["confident"], "one tracked win: win SP only, not confident")
 
 # predictions
 entry = {"pos": P1, "wins": 60, "losses": 54, "highest": P1}
@@ -63,7 +66,13 @@ check(pred["history"][0]["delta"] == -60 and pred["history"][0]["games"] == 3, "
 
 low = rank.predict({**entry, "wins": 10, "losses": 30}, [], [])
 check(low["win_rate_basis"] == "this season" and low["win_rate"] == 25, "season win rate when little recent data")
-check(all(x["games"] is None for x in low["goals"]), "no ETA when losing SP on average")
+check(not low["sp_known"] and low["expected_per_game"] is None and low["break_even_wr"] is None,
+      "no SP data: no expected SP / break-even")
+check(all(x["games"] is None and x["min_wins"] is None for x in low["goals"]), "no SP data: no games / wins estimates")
+check(low["goals"][0]["need"] == 78, "SP needed is still shown (real data)")
+check(low["scenarios"] == [] and low["losses_to_drop"] is None, "no SP data: no scenarios, no demotion guess")
+losing = rank.predict({**entry, "wins": 10, "losses": 30}, changes, [])
+check(losing["expected_per_game"] < 0 and all(x["games"] is None for x in losing["goals"]), "no ETA when losing SP on average")
 
 floor = rank.predict({"pos": rank.position("GOLD", "IV", 40), "wins": 1, "losses": 1, "highest": None}, [], [])
 check(floor["at_floor"] and floor["losses_to_drop"] is None, "Division IV: at floor, no demotion")
@@ -89,6 +98,26 @@ c = rank.RankTracker(fresh.path).update({"pos": 1966, "wins": 62, "losses": 54})
 check(c and c["games"] == 2 and c["delta"] == 44, "games played while closed are still recorded")
 check(rank.entry_from_ranked_stats({"queueMap": {}}) is None, "no Classic rank -> None")
 check(rank.entry_from_ranked_stats({"queueMap": {"JADE_RANKED_SOLO_5x5": {"tier": "NONE"}}}) is None, "unranked -> None")
+
+# Aegis of Valor
+prefs = ["TOP", "MIDDLE", "JUNGLE", "BOTTOM", "UTILITY"]
+check(rank.aegis_for("MIDDLE", prefs) is None, "2nd preferred role: no Aegis")
+a = rank.aegis_for("utility", prefs)
+check(a == {"role": "UTILITY", "role_name": "Support", "pref": 5, "bonus": 100}, f"5th role: +100% ({a})")
+check(rank.aegis_for("JUNGLE", prefs)["bonus"] == 40 and rank.aegis_for("BOTTOM", prefs)["bonus"] == 70, "3rd +40%, 4th +70%")
+check(rank.aegis_for("", prefs) is None and rank.aegis_for("TOP", []) is None, "unknown role/prefs: no Aegis")
+aeg = changes + [dict(ch(44, True), pref=5, role="UTILITY"), dict(ch(-18, False), pref=5, role="UTILITY")]
+sp2 = rank.learned_sp(aeg)
+check(sp2["win"] == 24, "Aegis-role wins don't inflate your normal win SP")
+check(sp2["loss"] == 18, "Aegis-role losses still count (bonus is win-only)")
+summ = rank.aegis_summary(aeg, sp2["win"])
+check(len(summ["seen"]) == 1 and summ["seen"][0]["observed_bonus"] == 83 and summ["seen"][0]["role"] == "Support",
+      f"observed Aegis bonus 44 vs 24 = +83% ({summ['seen']})")
+check(rank.aegis_summary(aeg, None)["seen"][0]["observed_bonus"] is None, "no observed % without a normal win baseline")
+tc = rank.RankTracker(os.path.join(tempfile.mkdtemp(), "r.jsonl"))
+tc.update({"pos": 1922, "wins": 60, "losses": 54})
+c = tc.update({"pos": 1962, "wins": 61, "losses": 54}, {"id": 7, "champ": "Janna"}, {"role": "UTILITY", "pref": 5})
+check(c["role"] == "UTILITY" and c["pref"] == 5, "role and preference saved with the SP change")
 
 print("\nALL PASSED" if not failed else "\nSOME FAILED")
 sys.exit(1 if failed else 0)
