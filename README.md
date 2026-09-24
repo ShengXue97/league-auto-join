@@ -18,6 +18,9 @@ Check the setup: `python league_remote.py --test` sends a fake MATCH FOUND notif
 | Someone else declined | Quiet "Back in queue" |
 | Champ select starts | Loud "Get back!" with seconds left |
 | Your turn to pick / ban | Loud alert + up to 2 one-tap favorite buttons |
+| Favorite banned / taken | Alert suggesting your next available favorite |
+| Swap request from a teammate | ACCEPT / DECLINE + whether you'd pick earlier or later |
+| Your swap request answered | Accepted (new pick #) or declined |
 
 ## Champion select from your phone
 Open the control page during champ select to see your team, bans and timer,
@@ -25,7 +28,16 @@ search the champion grid, and **LOCK IN** or **BAN** yourself. Tapping a
 champion hovers it so teammates see your choice. Works with League Classic
 champions.
 
-Nothing is ever picked or banned automatically - every lock-in is your own tap.
+**Pick order swaps:** your team is listed in pick order. Players who pick before
+you get a **Swap** button (the earliest is highlighted), and incoming requests show
+whether accepting gives you an earlier or later pick.
+
+**My champions:** add your mains on the phone page in priority order. In champ
+select you'll see each one's status (available / banned / taken), your top
+available one is pre-selected so LOCK IN is one tap, and you're alerted if one
+gets banned or taken.
+
+Nothing is ever picked, banned or swapped automatically - every action is your own tap.
 
 Optional favorites in `config.json` (shown first in the grid, and as buttons
 in the "your turn" notification when available):

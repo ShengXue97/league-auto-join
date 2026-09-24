@@ -26,7 +26,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -240,6 +240,34 @@ class Notifier:
         )
 
 
+    def champ_select_started(self, seconds, hover_fav, swap_up):
+        """hover_fav: (id, name) or None. swap_up: dict from champ_select_state or None."""
+        actions = [{"action": "view", "label": "Open", "url": self.control_url, "clear": True}]
+        if hover_fav:
+            actions.append({"action": "http", "label": f"Hover {hover_fav[1]}", "method": "POST",
+                            "url": f"{self.control_url}/api/cs/hover?kind=pick&champ={hover_fav[0]}"})
+        if swap_up:
+            actions.append({"action": "http", "label": f"Ask #{swap_up['order']} to swap", "method": "POST",
+                            "url": f"{self.control_url}/api/cs/swap-up"})
+        msg = f"~{seconds}s left in this phase." if seconds else "Get back to your PC!"
+        self.send("CHAMP SELECT STARTED", msg, priority=5, tags=["runner", "video_game"], actions=actions)
+
+    def swap_request(self, swap):
+        better = swap["their_order"] < swap["my_order"]
+        verdict = "EARLIER pick for you" if better else "LATER pick for you"
+        self.send(
+            f"SWAP REQUEST from {swap['name']}",
+            f"You'd pick #{swap['their_order']} instead of #{swap['my_order']} - {verdict}.",
+            priority=5 if better else 4,
+            tags=["white_check_mark" if better else "warning", "arrows_counterclockwise"],
+            actions=[
+                {"action": "http", "label": "ACCEPT", "method": "POST", "clear": True,
+                 "url": f"{self.control_url}/api/cs/swap?op=accept&id={swap['id']}"},
+                {"action": "http", "label": "DECLINE", "method": "POST", "clear": True,
+                 "url": f"{self.control_url}/api/cs/swap?op=decline&id={swap['id']}"},
+            ],
+        )
+
     def your_turn(self, kind, seconds, favorites):
         """kind: 'pick' or 'ban'. favorites: [(champ_id, name)] that are available now."""
         verb = "Lock" if kind == "pick" else "Ban"
@@ -266,13 +294,21 @@ class Watcher:
         self.last_event = ""
         self.notified_action = None
         self._champs = {}  # id -> name
+        self._reset_cs_tracking()
+
+    def _reset_cs_tracking(self):
+        self.notified_action = None
+        self.notified_swaps = set()   # incoming swap ids already alerted
+        self.swap_sent = None         # (swap id, my pick order when sent)
+        self.fav_lost = set()         # favorite ids already reported as banned/taken
 
     def snapshot(self):
         with self.lock:
             s = dict(self.status)
         s["version"] = __version__
         s["auto_accept"] = self.cfg["auto_accept"]
-        s["favorites"] = list(self.cfg.get("favorite_picks", [])) + list(self.cfg.get("favorite_bans", []))
+        s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
+                          "ban": list(self.cfg.get("favorite_bans", []))}
         s["last_event"] = self.last_event
         return s
 
@@ -315,8 +351,10 @@ class Watcher:
             st["cs_phase"] = cs.get("phase")
             st["cs_time_left"] = cs.get("time_left")
             self.maybe_notify_turn(cs)
-        else:
-            self.notified_action = None
+            self.maybe_notify_swaps(cs)
+            self.maybe_notify_fav_lost(cs)
+        elif self.last_phase == "ChampSelect":
+            self._reset_cs_tracking()
 
         with self.lock:
             was_connected = self.status.get("connected")
@@ -340,6 +378,12 @@ class Watcher:
             self._champs = {c["id"]: c["name"] for c in data if c.get("id", 0) > 0}
         return self._champs
 
+    def resolve(self, name, pool):
+        """Champion name -> id. Names exist twice (e.g. Pantheon 80 and League Classic
+        Pantheon 60080), so prefer the id that is actually in this champ select."""
+        ids = [i for i, n in self.champions().items() if n.lower() == str(name).lower()]
+        return next((i for i in ids if i in pool), None)
+
     def champ_select_state(self):
         s = self.lcu.request("GET", "/lol-champ-select/v1/session") or {}
         me = s.get("localPlayerCellId")
@@ -359,23 +403,80 @@ class Watcher:
         mine = [a for a in actions if a.get("actorCellId") == me and not a.get("completed")]
         current = next((a for a in mine if a.get("isInProgress")), None)
         target = current or (mine[0] if mine else None)
+        my_pick = next((a for a in mine if a.get("type") == "pick"), None)
         locked_cells = {a.get("actorCellId") for a in actions
                         if a.get("type") == "pick" and a.get("completed")}
 
+        # pick order of my team (1 = picks first)
+        team_raw = s.get("myTeam") or []
+        allies = {p.get("cellId") for p in team_raw}
+        order = []
+        for a in actions:
+            c = a.get("actorCellId")
+            if a.get("type") == "pick" and c in allies and c not in order:
+                order.append(c)
+        rank = {c: i + 1 for i, c in enumerate(order)}
+        swaps = {sw.get("cellId"): sw for sw in s.get("pickOrderSwaps") or []}
+
         def player(p):
+            cell = p.get("cellId")
+            sw = swaps.get(cell) or {}
             return {
-                "cell": p.get("cellId"),
+                "cell": cell,
                 "champ": p.get("championId") or p.get("championPickIntent") or 0,
-                "locked": p.get("cellId") in locked_cells,
+                "locked": cell in locked_cells,
                 "pos": (p.get("assignedPosition") or "").lower(),
                 "name": p.get("gameName") or "",
-                "me": p.get("cellId") == me,
+                "me": cell == me,
+                "order": rank.get(cell),
+                "swap_id": sw.get("id"),
+                "swap_state": sw.get("state"),
             }
 
-        choices = []
-        if target:
-            ep = "bannable" if target.get("type") == "ban" else "pickable"
-            choices = self.lcu.request("GET", f"/lol-champ-select/v1/{ep}-champion-ids") or []
+        team = sorted((player(p) for p in team_raw), key=lambda p: p["order"] or 99)
+        me_p = next((p for p in team if p["me"]), {})
+        my_order = me_p.get("order")
+
+        def swap_info(p):
+            return {"id": p["swap_id"], "cell": p["cell"], "name": p["name"] or "An ally",
+                    "their_order": p["order"], "my_order": my_order, "order": p["order"]}
+
+        swap_in = next((swap_info(p) for p in team if p["swap_state"] == "RECEIVED"), None)
+        swap_out = next((swap_info(p) for p in team if p["swap_state"] == "SENT"), None)
+        swap_up = None
+        if my_pick and my_order and not swap_out:
+            swap_up = next((swap_info(p) for p in team if not p["me"] and p["order"] and not p["locked"]
+                            and p["order"] < my_order and p["swap_state"] == "AVAILABLE"), None)
+
+        pickable = (self.lcu.request("GET", "/lol-champ-select/v1/pickable-champion-ids") or []
+                    if mine else [])
+        bannable = (self.lcu.request("GET", "/lol-champ-select/v1/bannable-champion-ids") or []
+                    if any(a.get("type") == "ban" for a in mine) else [])
+        choices = bannable if target and target.get("type") == "ban" else pickable
+
+        enemies = [p.get("championId") or 0 for p in s.get("theirTeam") or []]
+        bans = [a.get("championId") for a in actions
+                if a.get("type") == "ban" and a.get("completed") and a.get("championId")]
+        pool = set(pickable) | set(bannable) | set(bans) | set(enemies) | {p["champ"] for p in team}
+
+        favorites = []
+        for name in self.cfg.get("favorite_picks") or []:
+            cid = self.resolve(name, pool)
+            if cid is None:
+                continue
+            status, by = "unavailable", ""
+            holder = next((p for p in team if p["champ"] == cid), None)
+            if cid in bans:
+                status = "banned"
+            elif holder and holder["me"]:
+                status = "mine"
+            elif holder:
+                status, by = ("ally" if holder["locked"] else "ally_hover"), holder["name"] or "An ally"
+            elif cid in enemies:
+                status = "enemy"
+            elif cid in pickable:
+                status = "available"
+            favorites.append({"id": cid, "name": self.champions()[cid], "status": status, "by": by})
 
         return {
             "phase": timer.get("phase"),
@@ -386,12 +487,19 @@ class Watcher:
                 "in_progress": bool(current),
                 "champ": target.get("championId") or 0,
             } if target else None,
+            "pick_action": {"id": my_pick.get("id"), "champ": my_pick.get("championId") or 0,
+                            "in_progress": bool(my_pick.get("isInProgress"))} if my_pick else None,
             "done": not mine and me in locked_cells,
-            "team": [player(p) for p in s.get("myTeam") or []],
-            "enemies": [p.get("championId") or 0 for p in s.get("theirTeam") or []],
-            "bans": [a.get("championId") for a in actions
-                     if a.get("type") == "ban" and a.get("completed") and a.get("championId")],
+            "team": team,
+            "my_order": my_order,
+            "swap_in": swap_in,
+            "swap_out": swap_out,
+            "swap_up": swap_up,
+            "enemies": enemies,
+            "bans": bans,
             "choices": choices,
+            "pickable": pickable,
+            "favorites": favorites,
         }
 
     def maybe_notify_turn(self, cs):
@@ -403,17 +511,63 @@ class Watcher:
         self.event(f"Your turn to {kind}")
         if not self.cfg.get("notify_your_turn", True):
             return
-        champs = self.champions()
-        by_name = {n.lower(): i for i, n in champs.items() if i in set(cs.get("choices") or [])}
+        choices = set(cs.get("choices") or [])
         wanted = self.cfg.get("favorite_bans" if kind == "ban" else "favorite_picks") or []
-        favs = [(by_name[n.lower()], champs[by_name[n.lower()]])
-                for n in map(str, wanted) if n.lower() in by_name]
+        favs = []
+        for name in wanted:
+            cid = self.resolve(name, choices)
+            if cid is not None:
+                favs.append((cid, self.champions()[cid]))
         self.notifier.your_turn(kind, cs.get("time_left"), favs)
 
-    def cs_act(self, champ_id, lock):
-        """Hover (lock=False) or lock in / ban (lock=True) a champion for my current action."""
+    def maybe_notify_swaps(self, cs):
+        sw = cs.get("swap_in")
+        if sw and sw["id"] not in self.notified_swaps:
+            self.notified_swaps.add(sw["id"])
+            self.event(f"{sw['name']} asks to swap pick order (#{sw['their_order']} <-> #{sw['my_order']})")
+            self.notifier.swap_request(sw)
+        out = cs.get("swap_out")
+        if out and not self.swap_sent:
+            self.swap_sent = (out["id"], cs.get("my_order"))
+        elif self.swap_sent and not out:
+            _, old = self.swap_sent
+            self.swap_sent = None
+            new = cs.get("my_order")
+            if new and old and new < old:
+                self.event(f"Swap accepted - you now pick #{new}")
+                self.notifier.send("Swap accepted", f"You now pick #{new} (was #{old}).",
+                                   priority=4, tags=["white_check_mark"])
+            else:
+                self.event("Swap request declined or cancelled")
+                self.notifier.send("Swap not accepted", "Your pick order didn't change.",
+                                   priority=3, tags=["x"])
+
+    def maybe_notify_fav_lost(self, cs):
+        if not cs.get("pick_action"):
+            return
+        favs = cs.get("favorites") or []
+        lost = [f for f in favs if f["status"] in ("banned", "ally", "enemy") and f["id"] not in self.fav_lost]
+        if not lost:
+            return
+        self.fav_lost.update(f["id"] for f in lost)
+        what = {"banned": "was banned", "ally": "was picked by {by}", "enemy": "was picked by the enemy"}
+        text = "; ".join(f"{f['name']} {what[f['status']].format(by=f['by'])}" for f in lost)
+        nxt = next((f for f in favs if f["status"] in ("mine", "available")), None)
+        self.event(text)
+        actions = [{"action": "view", "label": "Open", "url": self.notifier.control_url, "clear": True}]
+        if nxt and nxt["status"] == "available":  # already hovering it -> no button needed
+            actions.append({"action": "http", "label": f"Hover {nxt['name']}", "method": "POST",
+                            "url": f"{self.notifier.control_url}/api/cs/hover?kind=pick&champ={nxt['id']}"})
+        self.notifier.send(f"{lost[0]['name'].upper()} UNAVAILABLE", text + (
+            f". Next up: {nxt['name']}." if nxt else ". No other favorites left - pick on the page."),
+            priority=4, tags=["no_entry"], actions=actions)
+
+    def cs_act(self, champ_id, lock, kind=None):
+        """Hover (lock=False) or lock in / ban (lock=True).
+        kind='pick' targets my pick even while a ban is in progress (declaring intent)."""
         cs = self.champ_select_state()
-        act = cs.get("action")
+        act = cs.get("pick_action") if kind == "pick" else cs.get("action")
+        choices = cs.get("pickable") if kind == "pick" else cs.get("choices")
         if not act:
             raise ValueError("You have no pick or ban left")
         if lock and not act["in_progress"]:
@@ -421,16 +575,54 @@ class Watcher:
         champ_id = champ_id or act["champ"]
         if not champ_id:
             raise ValueError("Choose a champion first")
-        if champ_id not in (cs.get("choices") or []):
+        if champ_id not in (choices or []):
             raise ValueError("That champion isn't available")
         path = f"/lol-champ-select/v1/session/actions/{act['id']}"
         self.lcu.request("PATCH", path, {"championId": champ_id})
         name = self.champions().get(champ_id, champ_id)
+        is_ban = act.get("type") == "ban"
         if lock:
             self.lcu.request("POST", path + "/complete")
-            self.event(f"{'Banned' if act['type'] == 'ban' else 'Locked in'} {name} from phone")
+            self.event(f"{'Banned' if is_ban else 'Locked in'} {name} from phone")
         else:
             self.event(f"Hovering {name}")
+
+    def cs_swap(self, op, swap_id=None):
+        """Pick order swaps: op = request | accept | decline | cancel | up (request earliest)."""
+        cs = self.champ_select_state()
+        if op == "up":
+            target = cs.get("swap_up")
+            if not target:
+                raise ValueError("Nobody earlier can swap with you right now")
+            swap_id, op = target["id"], "request"
+            self.event(f"Asked {target['name']} (#{target['order']}) to swap pick order")
+        elif op not in ("request", "accept", "decline", "cancel") or swap_id is None:
+            raise ValueError("Bad swap request")
+        else:
+            self.event(f"Swap {op} (id {swap_id})")
+        self.lcu.request("POST", f"/lol-champ-select/v1/session/pick-order-swaps/{swap_id}/{op}")
+
+    def edit_favorites(self, op, kind, name):
+        key = "favorite_bans" if kind == "ban" else "favorite_picks"
+        favs = [str(n) for n in self.cfg.get(key) or []]
+        low = [n.lower() for n in favs]
+        if op in ("remove", "up") and str(name).lower() in low:
+            name = favs[low.index(str(name).lower())]  # works even for unknown/misspelled names
+        else:
+            name = next((n for n in self.champions().values() if n.lower() == str(name).lower()), None)
+            if not name:
+                raise ValueError("Unknown champion")
+        if op == "add" and name.lower() not in low:
+            favs.append(name)
+        elif op == "remove" and name.lower() in low:
+            favs.pop(low.index(name.lower()))
+        elif op == "up" and name.lower() in low:
+            i = low.index(name.lower())
+            if i > 0:
+                favs[i - 1], favs[i] = favs[i], favs[i - 1]
+        self.cfg[key] = favs
+        save_config(self.cfg)
+        self.event(f"Favorite {kind}s: {', '.join(favs) or 'none'}")
 
     CAPTURE_ENDPOINTS = [
         "/lol-gameflow/v1/session",
@@ -490,10 +682,12 @@ class Watcher:
             self.event("Champ select started")
             # skip if a "your turn" alert already went out for this champ select
             if self.cfg["notify_champ_select"] and self.notified_action is None:
-                left = st.get("cs_time_left")
-                msg = f"~{left}s left in this phase. Get back!" if left else "Get back to your PC!"
-                self.notifier.send("CHAMP SELECT STARTED", msg, priority=5,
-                                   tags=["runner", "video_game"])
+                cs = st.get("cs") or {}
+                fav = next(((f["id"], f["name"]) for f in cs.get("favorites", [])
+                            if f["status"] == "available"), None)
+                self.notifier.champ_select_started(st.get("cs_time_left"),
+                                                   fav if cs.get("pick_action") else None,
+                                                   cs.get("swap_up"))
         elif new == "Matchmaking" and old != "ReadyCheck":
             self.event("Entered queue")
 
@@ -564,11 +758,22 @@ def make_handler(cfg, lcu, watcher):
                 elif url.path == "/api/decline":
                     lcu.decline()
                     watcher.event("Declined from phone")
-                elif url.path in ("/api/cs/hover", "/api/cs/lock"):
-                    champ = q.get("champ", [""])[0]
+                elif url.path.startswith("/api/cs/") or url.path == "/api/favorites":
+                    arg = lambda k: q.get(k, [""])[0]
                     try:
-                        watcher.cs_act(int(champ) if champ.isdigit() else 0,
-                                       lock=url.path.endswith("lock"))
+                        if url.path in ("/api/cs/hover", "/api/cs/lock"):
+                            champ = arg("champ")
+                            watcher.cs_act(int(champ) if champ.isdigit() else 0,
+                                           lock=url.path.endswith("lock"), kind=arg("kind") or None)
+                        elif url.path == "/api/cs/swap-up":
+                            watcher.cs_swap("up")
+                        elif url.path == "/api/cs/swap":
+                            sid = arg("id")
+                            watcher.cs_swap(arg("op"), int(sid) if sid.lstrip("-").isdigit() else None)
+                        elif url.path == "/api/favorites":
+                            watcher.edit_favorites(arg("op"), arg("kind") or "pick", arg("name"))
+                        else:
+                            return self._json(404, {"error": "not found"})
                     except ValueError as e:
                         watcher.event(f"Phone: {e}")
                         return self._json(409, {"error": str(e)})

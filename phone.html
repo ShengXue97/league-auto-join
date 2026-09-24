@@ -70,6 +70,40 @@
   #lock { width: 100%; border-color: var(--blue); background: #0ac8b922; }
   #lock.ban { border-color: var(--red); background: #e8405722; }
   .empty { color: var(--muted); text-align: center; grid-column: 1 / -1; padding: 12px; }
+
+  /* pick order + swaps */
+  .ord { flex: none; width: 26px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .player.me .ord { color: var(--gold); }
+  .small { padding: 8px 10px; font-size: 13px; letter-spacing: .04em; border-width: 1px; border-color: var(--gold-dim); border-radius: 6px; }
+  .small.go { border-color: var(--blue); background: #0ac8b922; }
+  .small.best { border-color: var(--gold); background: #c8aa6e33; }
+  .small.no { border-color: var(--red); }
+  .swapcard { border-color: var(--blue); }
+  .swapcard.worse { border-color: var(--red); }
+  .swapcard .btns { margin-top: 12px; }
+  .swapcard button { padding: 14px 8px; font-size: 16px; }
+  #swapUp { width: 100%; margin-top: 12px; }
+
+  /* my champions */
+  .favs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fav-chip { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border-radius: 8px;
+    border: 1px solid var(--gold-dim); background: #1e2328; font-size: 14px; font-weight: 400; letter-spacing: 0; text-align: left; }
+  .fav-chip .icon { width: 32px; height: 32px; }
+  .fav-chip small { display: block; color: var(--muted); font-size: 11px; }
+  .fav-chip.available { border-color: var(--green); }
+  .fav-chip.available small { color: var(--green); }
+  .fav-chip.mine { border-color: var(--gold); }
+  .fav-chip.mine small { color: var(--gold); }
+  .fav-chip.banned, .fav-chip.ally, .fav-chip.enemy, .fav-chip.unavailable { opacity: .45; }
+  .fav-chip.ally_hover small { color: #f0b232; }
+  #star { width: 100%; margin-top: 10px; }
+  .favlist { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .favrow { display: flex; align-items: center; gap: 8px; }
+  .favrow .n { color: var(--muted); width: 20px; }
+  .favrow .grow { flex: 1; }
+  .addrow { display: flex; gap: 8px; margin-top: 10px; }
+  .addrow input { flex: 1; font: inherit; font-size: 16px; padding: 10px; border-radius: 6px;
+    border: 1px solid var(--gold-dim); background: #010a13; color: var(--text); min-width: 0; }
 </style>
 </head>
 <body>
@@ -91,9 +125,23 @@
     <div class="wrap">
       <div class="turn" id="turn"></div>
 
+      <div class="card swapcard" id="swapIn" hidden>
+        <div id="swapInText"></div>
+        <div class="btns">
+          <button id="swapAccept">ACCEPT</button>
+          <button id="swapDecline">DECLINE</button>
+        </div>
+      </div>
+
+      <div class="card" id="myChamps" hidden>
+        <div class="label">My champions</div>
+        <div class="favs" id="favs"></div>
+      </div>
+
       <div class="card">
-        <div class="label">Your team</div>
+        <div class="label">Your team · pick order</div>
         <div class="team" id="team"></div>
+        <button class="small best" id="swapUp" hidden></button>
         <div id="bansBox" hidden>
           <div class="label" style="margin-top:14px">Bans</div>
           <div class="icons" id="bans"></div>
@@ -107,6 +155,7 @@
       <div class="card" id="pickerCard">
         <input type="search" id="search" placeholder="Search champion…" autocomplete="off">
         <div class="grid" id="grid"></div>
+        <button class="small" id="star" hidden></button>
       </div>
 
       <button id="lock" disabled>CHOOSE A CHAMPION</button>
@@ -121,6 +170,17 @@
       </div>
       <button class="toggle" id="auto" aria-label="Toggle auto-accept"></button>
     </div>
+  </div>
+
+  <div class="card">
+    <div><b>My champions</b></div>
+    <div class="hint">Your picks in priority order. Shown first in champ select, and as one-tap buttons in alerts.</div>
+    <div class="favlist" id="favlist"></div>
+    <div class="addrow">
+      <input id="favAdd" list="champNames" placeholder="Add champion…" autocomplete="off">
+      <button class="small go" id="favAddBtn">ADD</button>
+    </div>
+    <datalist id="champNames"></datalist>
   </div>
 
   <div class="log"><span class="dot" id="dot"></span><span id="log"></span></div>
@@ -139,8 +199,9 @@ const NAMES = {
 const CS_PHASES = { PLANNING: "Declare your pick", BAN_PICK: "Bans & picks", FINALIZATION: "Final phase" };
 
 let champs = {};          // id -> name
-let favorites = new Set(); // champion names from config
+let favorites = { pick: [], ban: [] }; // champion names from config, priority order
 let selected = 0;         // champion chosen on this page
+let selectedFor = null;   // action id the selection belongs to
 let lastGridKey = "";
 let lastCs = null;
 
@@ -151,8 +212,19 @@ async function loadChamps() {
   try {
     const r = await fetch("/api/champs", { cache: "no-store" });
     if (r.ok) for (const c of await r.json()) champs[c.id] = c.name;
+    $("champNames").innerHTML = [...new Set(Object.values(champs))].sort()
+      .map(n => `<option value="${n}">`).join("");
   } catch (e) { /* retried on next champ select render */ }
 }
+
+const favIndex = (name, kind) => {
+  const i = favorites[kind].findIndex(n => n.toLowerCase() === name.toLowerCase());
+  return i < 0 ? 999 : i;
+};
+const FAV_STATUS = {
+  available: "Available", mine: "Your pick", banned: "Banned", ally: "Taken by {by}",
+  ally_hover: "{by} is hovering", enemy: "Enemy picked", unavailable: "Not available",
+};
 
 function renderChampSelect(cs) {
   lastCs = cs;
@@ -167,14 +239,47 @@ function renderChampSelect(cs) {
     : act ? `Your ${isBan ? "ban" : "pick"} is coming up`
     : cs.done ? "✔ You're locked in" : "Waiting for others…";
 
-  // team
-  $("team").innerHTML = cs.team.map(p => `
+  // incoming swap request
+  const sin = cs.swap_in;
+  $("swapIn").hidden = !sin;
+  if (sin) {
+    const better = sin.their_order < sin.my_order;
+    $("swapIn").classList.toggle("worse", !better);
+    $("swapInText").innerHTML = `<b>${sin.name}</b> wants to swap pick order.<br>
+      You'd pick <b>#${sin.their_order}</b> instead of #${sin.my_order} —
+      ${better ? "✅ earlier, recommended" : "⚠ later"}`;
+    $("swapAccept").dataset.id = $("swapDecline").dataset.id = sin.id;
+  }
+
+  // my champions
+  const favs = cs.favorites || [];
+  $("myChamps").hidden = !favs.length || !cs.pick_action;
+  $("favs").innerHTML = favs.map(f => `
+    <button class="fav-chip ${f.status}" data-id="${f.id}" ${f.status === "available" ? "" : "disabled"}>
+      ${icon(f.id)}<span>${f.name}<small>${FAV_STATUS[f.status].replace("{by}", f.by)}</small></span>
+    </button>`).join("");
+
+  // team in pick order, with swap buttons for earlier picks
+  const up = cs.swap_up;
+  const canSwap = cs.pick_action && !cs.swap_out;
+  $("team").innerHTML = cs.team.map(p => {
+    let right = `<div class="st${p.locked ? " locked" : ""}">${p.locked ? "Locked" : p.champ ? "Hovering" : ""}</div>`;
+    if (!p.me && p.swap_state === "SENT") {
+      right = `<button class="small no" data-cancel="${p.swap_id}">Waiting… ✕</button>`;
+    } else if (!p.me && canSwap && !p.locked && p.swap_state === "AVAILABLE" && p.order < cs.my_order) {
+      right = `<button class="small ${up && up.cell === p.cell ? "best" : "go"}" data-swap="${p.swap_id}">⇅ Swap</button>`;
+    }
+    return `
     <div class="player${p.me ? " me" : ""}">
+      <div class="ord">${p.order ? "#" + p.order : ""}</div>
       ${icon(p.champ)}
       <div>${p.me ? "You" : (p.name || "Ally")}${p.pos ? ` · ${p.pos}` : ""}<br>
         <small>${champName(p.champ) || "—"}</small></div>
-      <div class="st${p.locked ? " locked" : ""}">${p.locked ? "Locked" : p.champ ? "Hovering" : ""}</div>
-    </div>`).join("");
+      <div style="margin-left:auto">${right}</div>
+    </div>`;
+  }).join("");
+  $("swapUp").hidden = !up;
+  if (up) $("swapUp").textContent = `⇅ Ask ${up.name} for pick #${up.order}`;
   $("bansBox").hidden = !cs.bans.length;
   $("bans").innerHTML = cs.bans.map(id => icon(id, "icon ban")).join("");
   const enemies = cs.enemies.filter(Boolean);
@@ -183,10 +288,28 @@ function renderChampSelect(cs) {
 
   // picker
   $("pickerCard").hidden = !act;
-  // start from whatever is already hovered/declared in the client
+  // new action (e.g. ban finished, now picking) -> fresh selection
+  if (act && act.id !== selectedFor) { selected = 0; selectedFor = act.id; }
+  // start from what's hovered in the client, else your top available favorite
   const meP = cs.team.find(p => p.me);
-  if (act && !selected) selected = act.champ || (meP && !meP.locked && meP.champ) || 0;
+  if (act && !selected) {
+    const topFav = act.type === "pick"
+      ? (favs.find(f => f.status === "available") || {}).id
+      : cs.choices.slice().sort((a, b) => favIndex(champName(a), "ban") - favIndex(champName(b), "ban"))
+          .find(id => favIndex(champName(id), "ban") < 999);
+    selected = act.champ || (act.type === "pick" && meP && !meP.locked && meP.champ) || topFav || 0;
+  }
   renderGrid(cs);
+
+  const kind = isBan ? "ban" : "pick";
+  const star = $("star");
+  star.hidden = !act || !selected;
+  if (selected) {
+    const isFav = favIndex(champName(selected), kind) < 999;
+    star.textContent = isFav ? `★ Remove ${champName(selected)} from my ${kind}s` : `☆ Add ${champName(selected)} to my ${kind}s`;
+    star.dataset.op = isFav ? "remove" : "add";
+    star.dataset.kind = kind;
+  }
 
   const lock = $("lock");
   lock.hidden = !act;
@@ -200,16 +323,17 @@ function renderChampSelect(cs) {
 
 function renderGrid(cs) {
   const q = $("search").value.trim().toLowerCase();
-  const key = [cs.choices.join(","), q, selected, Object.keys(champs).length].join("|");
+  const kind = cs.action && cs.action.type === "ban" ? "ban" : "pick";
+  const key = [cs.choices.join(","), q, selected, Object.keys(champs).length, favorites[kind].join(",")].join("|");
   if (key === lastGridKey) return; // keep scroll position between polls
   lastGridKey = key;
 
   const list = cs.choices
     .map(id => ({ id, name: champName(id) }))
     .filter(c => !q || c.name.toLowerCase().includes(q))
-    .sort((a, b) => (favorites.has(b.name.toLowerCase()) - favorites.has(a.name.toLowerCase())) || a.name.localeCompare(b.name));
+    .sort((a, b) => (favIndex(a.name, kind) - favIndex(b.name, kind)) || a.name.localeCompare(b.name));
   $("grid").innerHTML = list.length ? list.map(c => `
-    <button class="champ${c.id === selected ? " sel" : ""}${favorites.has(c.name.toLowerCase()) ? " fav" : ""}" data-id="${c.id}">
+    <button class="champ${c.id === selected ? " sel" : ""}${favIndex(c.name, kind) < 999 ? " fav" : ""}" data-id="${c.id}">
       ${icon(c.id, "")}<span>${c.name}</span>
     </button>`).join("") : `<div class="empty">No champions match</div>`;
 }
@@ -222,6 +346,49 @@ $("grid").onclick = e => {
   call("POST", `/api/cs/hover?champ=${selected}`); // shows your choice to teammates
 };
 $("search").oninput = () => lastCs && renderGrid(lastCs);
+$("favs").onclick = e => {
+  const b = e.target.closest(".fav-chip");
+  if (!b || b.disabled) return;
+  selected = +b.dataset.id;
+  if (lastCs) renderChampSelect(lastCs);
+  call("POST", `/api/cs/hover?kind=pick&champ=${selected}`);
+};
+$("team").onclick = e => {
+  const s = e.target.closest("[data-swap]"), c = e.target.closest("[data-cancel]");
+  if (s) call("POST", `/api/cs/swap?op=request&id=${s.dataset.swap}`);
+  if (c) call("POST", `/api/cs/swap?op=cancel&id=${c.dataset.cancel}`);
+};
+$("swapUp").onclick = () => call("POST", "/api/cs/swap-up");
+$("swapAccept").onclick = e => call("POST", `/api/cs/swap?op=accept&id=${e.target.dataset.id}`);
+$("swapDecline").onclick = e => call("POST", `/api/cs/swap?op=decline&id=${e.target.dataset.id}`);
+$("star").onclick = e => {
+  const d = e.target.dataset;
+  call("POST", `/api/favorites?op=${d.op}&kind=${d.kind}&name=${encodeURIComponent(champName(selected))}`);
+};
+
+function renderFavList() {
+  const list = favorites.pick;
+  const key = list.join(",");
+  if ($("favlist").dataset.key === key) return;
+  $("favlist").dataset.key = key;
+  $("favlist").innerHTML = list.length ? list.map((n, i) => `
+    <div class="favrow">
+      <span class="n">${i + 1}.</span><span class="grow">${n}</span>
+      ${i ? `<button class="small" data-up="${n}">↑</button>` : ""}
+      <button class="small no" data-rm="${n}">✕</button>
+    </div>`).join("") : `<div class="hint">None yet — add your mains below.</div>`;
+}
+$("favlist").onclick = e => {
+  const u = e.target.closest("[data-up]"), r = e.target.closest("[data-rm]");
+  if (u) call("POST", `/api/favorites?op=up&kind=pick&name=${encodeURIComponent(u.dataset.up)}`);
+  if (r) call("POST", `/api/favorites?op=remove&kind=pick&name=${encodeURIComponent(r.dataset.rm)}`);
+};
+$("favAddBtn").onclick = () => {
+  const n = $("favAdd").value.trim();
+  if (!n) return;
+  $("favAdd").value = "";
+  call("POST", `/api/favorites?op=add&kind=pick&name=${encodeURIComponent(n)}`);
+};
 $("lock").onclick = () => call("POST", `/api/cs/lock?champ=${selected}`);
 
 function render(s) {
@@ -230,7 +397,7 @@ function render(s) {
   $("auto").classList.toggle("on", !!s.auto_accept);
   $("log").textContent = s.last_event || "";
   if (s.version) $("version").textContent = `v${s.version}`;
-  if (s.favorites) favorites = new Set(s.favorites.map(n => n.toLowerCase()));
+  if (s.favorites) { favorites = s.favorites; renderFavList(); }
 
   let clock = "", sub = "";
   if (s.phase === "Matchmaking") {
@@ -251,7 +418,7 @@ function render(s) {
   $("cs").hidden = !inCs;
   $("queueBtns").hidden = !["Matchmaking", "ReadyCheck"].includes(s.phase);
   if (inCs) renderChampSelect(s.cs);
-  else { selected = 0; lastCs = null; lastGridKey = ""; }
+  else { selected = 0; selectedFor = null; lastCs = null; lastGridKey = ""; }
 
   const canAnswer = s.phase === "ReadyCheck" && s.my_response === "None";
   $("accept").disabled = $("decline").disabled = !canAnswer;
