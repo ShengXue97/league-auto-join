@@ -263,6 +263,20 @@ lcu.phase = "Lobby"
 w.tick()
 check(len([x for x in sent if "VICTORY" in x[0]]) == 1, "no fallback duplicate after leaving the game")
 
+# Riot's match history lags behind: SP changes before the new game appears there
+cfg, lcu, w, sent = make()
+w.refresh_history_and_rank()
+LIVE["data"] = live_data()
+w.tick()                                   # in game (game id 555 from the gameflow session)
+lcu.phase, lcu.eog = "EndOfGame", dict(eog, gameId=556)
+w.tick()
+lcu.ranked.update(leaguePoints=44, wins=61)  # SP updated, match history NOT updated yet
+w.refresh_history_and_rank()
+c = w.rank.changes()[-1]
+check(c["game_id"] == "556" and c["delta"] == 22,
+      f"SP change linked to the game that just ended, not the newest history game ({c['game_id']})")
+check(all(r["id"] != "556" for r in w.history), "(history really didn't have the new game yet)")
+
 # Aegis-role win: alert names the role and bonus
 w.send_result(None, {"delta": 40, "win": True, "games": 1, "pref": 5, "role": "UTILITY", "after": {"pos": 1983}})
 check("Aegis of Valor role (Support, your #5): up to +100%" in sent[-1][1] and sent[-1][0] == "VICTORY +40 SP",

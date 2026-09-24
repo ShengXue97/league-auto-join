@@ -3,6 +3,13 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.7.2] - 2026-09-25
+### Fixed
+- SP change credited to the wrong game: Riot adds a finished game to the match
+  history minutes later, and League Remote linked the SP change to the newest
+  game in the history, i.e. the previous game. It now links it to the game it saw
+  end (end-of-game stats / live game id). Confirmed on a real League Classic game.
+
 ## [1.7.1] - 2026-09-24
 ### Fixed
 - Constant flicker in champ select: every second the page rebuilt your team,

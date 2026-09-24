@@ -42,7 +42,7 @@ import autostart
 import ingame
 import rank
 
-__version__ = "1.7.1"
+__version__ = "1.7.2"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -812,10 +812,15 @@ class Watcher:
         self.rank_entry = entry
         if entry:
             self.ladder = self.ladder_position()
-        classic = [r for r in self.history if r.get("queue") == CLASSIC_QUEUE]
-        known = {c.get("game_id") for c in self.rank.changes()}
-        latest = classic[-1] if classic and classic[-1]["id"] not in known else None
-        change = self.rank.update(entry, latest, self.game_context)
+        # Which game caused this SP change? Only a game League Remote saw end (end-of-game
+        # stats or live data). Never "newest game in match history": Riot adds games to the
+        # history minutes later, so that would be the previous game.
+        with self._pending_lock:
+            pending = self.pending_result
+        game = pending["rec"] if pending else None
+        if game is None and self.game_id:
+            game = {"id": self.game_id, "champ": ((self.live or {}).get("me") or {}).get("champ")}
+        change = self.rank.update(entry, game, self.game_context)
         if change:
             self.game_context = None
         if change:
