@@ -39,3 +39,10 @@ in the "your turn" notification when available):
 - `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `port`.
 - Tests: `python tests/test_champ_select.py` (simulated champ select, no client needed).
 - If you miss champ select you dodge (queue lockout, and LP loss in ranked), so only turn on auto-accept if you'll be back in time.
+
+## Versions
+The version is shown in the startup window and at the bottom of the phone page.
+See `CHANGELOG.md` for what changed. Releases are tagged in git (`git tag` lists them).
+
+To release: bump `__version__` in `league_remote.py`, add a `CHANGELOG.md` entry,
+commit, then `git tag -a vX.Y.Z -m "..."`.

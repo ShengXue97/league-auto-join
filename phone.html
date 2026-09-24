@@ -124,6 +124,7 @@
   </div>
 
   <div class="log"><span class="dot" id="dot"></span><span id="log"></span></div>
+  <div class="log" id="version"></div>
 </div>
 
 <script>
@@ -228,6 +229,7 @@ function render(s) {
   $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
   $("auto").classList.toggle("on", !!s.auto_accept);
   $("log").textContent = s.last_event || "";
+  if (s.version) $("version").textContent = `v${s.version}`;
   if (s.favorites) favorites = new Set(s.favorites.map(n => n.toLowerCase()));
 
   let clock = "", sub = "";

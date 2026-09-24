@@ -99,6 +99,7 @@ w.tick()
 st = json.loads(req("GET", "/api/status")[1])
 cs = st["cs"]
 check(st["phase"] == "ChampSelect", "phase is ChampSelect")
+check(st["version"] == lr.__version__, "status reports version")
 check(cs["action"]["type"] == "ban" and cs["action"]["in_progress"], "my ban is in progress")
 check(24 <= cs["time_left"] <= 25, f"timer counts from internalNow (got {cs['time_left']})")
 check(cs["choices"] == [60001, 60080, 60103], "bannable list used for ban")

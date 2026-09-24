@@ -26,6 +26,8 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+__version__ = "1.1.0"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
@@ -268,6 +270,7 @@ class Watcher:
     def snapshot(self):
         with self.lock:
             s = dict(self.status)
+        s["version"] = __version__
         s["auto_accept"] = self.cfg["auto_accept"]
         s["favorites"] = list(self.cfg.get("favorite_picks", [])) + list(self.cfg.get("favorite_bans", []))
         s["last_event"] = self.last_event
@@ -614,7 +617,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     print("=" * 64)
-    print(" League Remote Accept is running")
+    print(f" League Remote Accept v{__version__} is running")
     print("=" * 64)
     print(f" Phone control page : {control_url}")
     print(f" ntfy topic         : {cfg['ntfy_topic']}")
