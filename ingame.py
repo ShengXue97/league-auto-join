@@ -272,6 +272,36 @@ def records_from_history(resp, champ_name, team_kills=None):
     return out
 
 
+class HistoryCache:
+    """The client only keeps your last 100 games. Keep every game seen so older
+    ones aren't lost as new games push them out (history_cache.json, git-ignored)."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def load(self):
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                return {r["id"]: r for r in json.load(f)}
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
+
+    def merge(self, records):
+        """Add/refresh records; returns all known games, oldest first."""
+        games = self.load()
+        before = len(games)
+        for r in records:
+            old = games.get(r["id"])
+            if old and r.get("kp") is None and old.get("kp") is not None:
+                r = {**r, "kp": old["kp"]}  # keep kill participation once known
+            games[r["id"]] = r
+        out = sorted(games.values(), key=lambda r: r.get("created", 0))
+        if len(games) != before or records:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(out, f)
+        return out
+
+
 def team_kills_from_game(game, participant_id):
     """Full game from /lol-match-history/v1/games/{id} -> kills of that player's team."""
     parts = (game or {}).get("participants") or []

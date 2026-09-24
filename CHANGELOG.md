@@ -3,6 +3,21 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.5.2] - 2026-09-24
+### Fixed
+- Stats overview showed 98 games / 49-49 while the Live tab showed 60W 54L.
+  Both were real but covered different things: the League client only keeps
+  your last 100 games (checked: it ignores requests for older ones), while the
+  rank data has the full season. The overview now shows the full season
+  record from the rank data, and champion stats / trends / recent games say
+  which games and dates they cover.
+- A test wrote a fake history file into the project folder; tests now always
+  use temporary folders.
+
+### Added
+- History cache (`history_cache.json`, git-ignored): every game seen is kept,
+  so games no longer drop off when the client's 100-game window moves on.
+
 ## [1.5.1] - 2026-09-24
 ### Fixed
 - Aegis of Valor after a role swap: League Remote re-checked your *new* role, so

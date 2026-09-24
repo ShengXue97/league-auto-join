@@ -375,16 +375,17 @@
   </div>
   <div class="col">
     <div class="card">
-      <div class="label">Overview · Classic games</div>
+      <div class="label" id="overviewLabel">Classic season</div>
       <div class="overview" id="overview"></div>
       <div class="hint" id="streak" style="text-align:center;margin-top:10px"></div>
+      <div class="hint" id="scope" style="margin-top:10px"></div>
     </div>
     <div class="card">
-      <div class="label">CS per minute · last 20 games</div>
+      <div class="label">CS per minute · your last 20 games</div>
       <div id="trend"></div>
     </div>
     <div class="card">
-      <div class="label">Champions</div>
+      <div class="label" id="champLabel">Champions</div>
       <div id="champTable"></div>
     </div>
     <div class="card">
@@ -803,10 +804,24 @@ function renderStats(st) {
   show("statsLoading", !st.loaded);
   renderRank(st.rank, st.ladder);
   renderAegis(st.rank, st.prefs);
+  // Season record comes from Riot's rank data (complete). Match details only exist for the
+  // games the client still has (its last 100) plus what League Remote saved since.
+  const season = st.season;
+  const o = season ? { games: season.wins + season.losses, wr: season.wr, w: season.wins, l: season.losses }
+                   : { games: st.games, wr: st.wr, w: st.wins, l: st.losses };
+  $("overviewLabel").textContent = season ? "Classic season · all games" : `Classic · last ${st.games} games`;
   $("overview").innerHTML = `
-    <div class="stat"><b>${+st.games}</b><small>Games</small></div>
-    <div class="stat"><b>${st.wr != null ? +st.wr + "%" : "–"}</b><small>Win rate</small></div>
-    <div class="stat"><b>${+st.wins}–${+st.losses}</b><small>W–L</small></div>`;
+    <div class="stat"><b>${+o.games}</b><small>Games</small></div>
+    <div class="stat"><b>${o.wr != null ? +o.wr + "%" : "–"}</b><small>Win rate</small></div>
+    <div class="stat"><b>${+o.w}–${+o.l}</b><small>W–L</small></div>`;
+  const missing = season ? season.wins + season.losses - st.games : 0;
+  $("scope").textContent = st.span
+    ? `Champion stats, trends and recent games cover your last ${st.games} games (${st.span.first} to ${st.span.last}, ` +
+      `${st.wins}W ${st.losses}L). ` +
+      (missing > 0 ? `The League client only keeps your last 100 games, so about ${missing} older season games have no details. ` : "") +
+      "League Remote saves every game from now on, so nothing else drops off."
+    : "";
+  $("champLabel").textContent = st.games ? `Champions · last ${st.games} games` : "Champions";
   const bits = [];
   if (st.streak) bits.push(`${st.streak.win ? "🔥" : "🧊"} ${st.streak.count} ${st.streak.win ? "win" : "loss"} streak`);
   if (st.today.wins + st.today.losses) bits.push(`Today ${st.today.wins}W ${st.today.losses}L`);

@@ -13,3 +13,6 @@ tmp/
 # Your SP change history (the client does not keep one)
 rank_history.jsonl
 rank_history.jsonl.last
+
+# Match history saved beyond the client's 100-game limit
+history_cache.json

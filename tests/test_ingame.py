@@ -137,6 +137,16 @@ team = {"participants": [{"participantId": 1, "teamId": 100, "stats": {"kills": 
                          {"participantId": 6, "teamId": 200, "stats": {"kills": 9}}]}
 check(ingame.team_kills_from_game(team, 1) == 12, "team kills from full game")
 
+# history cache: games the client drops (100-game limit) are kept
+hc = ingame.HistoryCache(os.path.join(tempfile.mkdtemp(), "h.json"))
+all5 = hc.merge(recs)
+later = ingame.records_from_history({"games": {"games": [hist_game(5, 60080, True, created=1_700_000_600_000),
+                                                         hist_game(4, 60103, False, created=1_700_000_400_000)]}}, names)
+merged = hc.merge(later)
+check([r["id"] for r in merged] == ["0", "1", "2", "3", "4", "5"], "cache keeps games the client no longer returns")
+check(next(r for r in hc.merge(ingame.records_from_history(resp, names)) if r["id"] == "3")["kp"] == 85,
+      "cache keeps kill participation once known")
+
 eog = {"gameId": 555, "gameLength": 1800, "gameMode": "JADE",
        "localPlayer": {"championId": 60080, "stats": {"CHAMPIONS_KILLED": 8, "NUM_DEATHS": 2, "ASSISTS": 10,
                                                       "MINIONS_KILLED": 180, "NEUTRAL_MINIONS_KILLED": 30,
@@ -151,6 +161,8 @@ check(ingame.record_from_eog({}, lambda c: None) is None, "empty end-of-game blo
 # ------------------------------------------------------------ watcher integration
 lr.capture = lambda *a, **k: None
 lr.save_config = lambda c: None
+_tmp = tempfile.mkdtemp()
+lr.RANK_PATH, lr.HISTORY_CACHE_PATH = os.path.join(_tmp, "rank.jsonl"), os.path.join(_tmp, "history.json")
 
 
 class FakeLCU:
@@ -204,6 +216,7 @@ def make():
     n.send = lambda title, message, **kw: sent.append((title, message, kw.get("actions") or []))
     w = lr.Watcher(cfg, lcu, n)
     w.rank = __import__("rank").RankTracker(os.path.join(tempfile.mkdtemp(), "r.jsonl"))
+    w.history_cache = ingame.HistoryCache(os.path.join(tempfile.mkdtemp(), "h.json"))
     return cfg, lcu, w, sent
 
 
@@ -274,7 +287,7 @@ check(sent[-1][0] == "DEFEAT" and "SP" not in sent[-1][0], "defeat alert without
 cfg, lcu, w, sent = make()
 w.refresh_history_and_rank()
 w2 = lr.Watcher(cfg, lcu, w.notifier)
-w2.rank = w.rank
+w2.rank, w2.history_cache = w.rank, w.history_cache
 lcu.ranked.update(leaguePoints=10, division="II", wins=62, losses=55)
 w2.refresh_history_and_rank()
 c = w2.rank.changes()[-1]
@@ -319,6 +332,9 @@ w.refresh_history_and_rank()
 code, body = req("GET", "/api/stats")
 data = json.loads(body)
 check(code == 200 and data["games"] == 5 and data["rank"]["rank"]["emblem"] == "Platinum" and data["loaded"], "/api/stats")
+check(data["season"] == {"wins": 60, "losses": 54, "wr": 53} and data["games"] == 5,
+      "stats separate the full season record (rank data) from games with details")
+check(data["span"]["first"] <= data["span"]["last"], "stats say which dates the detailed games cover")
 srv.shutdown()
 
 print("\nALL PASSED" if not failed else "\nSOME FAILED")

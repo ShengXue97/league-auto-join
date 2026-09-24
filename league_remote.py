@@ -32,12 +32,13 @@ from urllib.parse import parse_qs, urlparse
 import ingame
 import rank
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
 RANK_PATH = os.path.join(HERE, "rank_history.jsonl")
+HISTORY_CACHE_PATH = os.path.join(HERE, "history_cache.json")
 CLASSIC_QUEUE = 4310  # League Classic 5v5 (Summoner's Journey)
 
 DEFAULT_LOCKFILES = [
@@ -311,6 +312,7 @@ class Watcher:
         self._items = {}   # id -> icon path
         self._reset_cs_tracking()
         self.rank = rank.RankTracker(RANK_PATH)
+        self.history_cache = ingame.HistoryCache(HISTORY_CACHE_PATH)
         self.history = []          # official match history records, oldest first
         self._team_kills = {}      # game id -> my team's kills (for kill participation)
         self.rank_entry = None     # current Classic rank from the client
@@ -790,7 +792,8 @@ class Watcher:
             if gid not in self._team_kills and g.get("participants"):
                 full = self.lcu.request("GET", f"/lol-match-history/v1/games/{gid}", timeout=10)
                 self._team_kills[gid] = ingame.team_kills_from_game(full, g["participants"][0].get("participantId"))
-        self.history = ingame.records_from_history(resp, lambda cid: self.champions().get(cid), self._team_kills)
+        fresh = ingame.records_from_history(resp, lambda cid: self.champions().get(cid), self._team_kills)
+        self.history = self.history_cache.merge(fresh)
 
         entry = rank.entry_from_ranked_stats(self.lcu.request("GET", "/lol-ranked/v1/current-ranked-stats", timeout=10))
         self.rank_entry = entry
@@ -898,6 +901,11 @@ class Watcher:
                 presets.append({"label": f"{main['champ']} ({main['games']} games)", "wr": main["wr"]})
             st["rank"]["presets"] = presets
         st["ladder"] = self.ladder
+        # two different scopes, labelled on the page: full season (rank data) vs games we have details for
+        e = self.rank_entry
+        st["season"] = {"wins": e["wins"], "losses": e["losses"],
+                        "wr": round(100 * e["wins"] / max(1, e["wins"] + e["losses"]))} if e else None
+        st["span"] = {"first": classic[0]["date"][:10], "last": classic[-1]["date"][:10]} if classic else None
         st["prefs"] = [rank.ROLE_NAMES.get(p, p) for p in self.prefs]
         st["loaded"] = bool(self.history) or self.rank_entry is not None
         return st
