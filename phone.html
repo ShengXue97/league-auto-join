@@ -397,6 +397,21 @@
 
 <script>
 const $ = id => document.getElementById(id);
+
+// Redraw only what changed: assigning the same HTML/text again rebuilds the elements
+// (every champion icon reloads), which showed as a constant flicker.
+(() => {
+  const html = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+  Object.defineProperty(Element.prototype, "innerHTML", {
+    configurable: true, get: html.get,
+    set(v) { if (this._lastHTML === v) return; this._lastHTML = v; html.set.call(this, v); },
+  });
+  const text = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+  Object.defineProperty(Node.prototype, "textContent", {
+    configurable: true, get: text.get,
+    set(v) { if (text.get.call(this) === String(v ?? "")) return; this._lastHTML = undefined; text.set.call(this, v); },
+  });
+})();
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const mmss = s => s == null ? "" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const NAMES = {
@@ -417,9 +432,9 @@ let lastCs = null;
 let csGoal = 7;
 let tab = "live";
 
-const icon = (id, cls = "icon") => id ? `<img class="${cls}" loading="lazy" src="/icon/${+id}" alt="">` : `<span class="${cls}"></span>`;
+const icon = (id, cls = "icon") => id ? `<img class="${cls}" src="/icon/${+id}" alt="">` : `<span class="${cls}"></span>`;
 const itemIcons = (ids, n = 7) => (ids || []).slice(0, n)
-  .map(id => `<img loading="lazy" src="/item/${+id}" alt="" onerror="this.replaceWith(document.createElement('span'))">`).join("");
+  .map(id => `<img src="/item/${+id}" alt="" onerror="this.replaceWith(document.createElement('span'))">`).join("");
 const champName = id => champs[id] || (id ? `#${id}` : "");
 const show = (id, on) => { $(id).hidden = !on; };
 
@@ -620,6 +635,21 @@ function renderGame(s) {
     `<div><span class="t">${esc(f.t)}</span><span class="${esc(f.kind)}">${esc(f.text)}</span></div>`).join("");
 }
 
+/* ============================== timers ============================== */
+let lastStatus = null, statusAt = 0;
+
+// Clock for the status card, dt seconds after the data was fetched
+function clockText(s, dt) {
+  if (!s) return "";
+  if (s.phase === "Matchmaking" && s.time_in_queue != null) return mmss(s.time_in_queue + dt);
+  if (s.phase === "ReadyCheck" && s.ready_timer != null) return Math.max(0, Math.ceil(10 - s.ready_timer - dt)) + "s";
+  if (s.phase === "ChampSelect" && s.cs_time_left != null) return Math.max(0, Math.ceil(s.cs_time_left - dt)) + "s";
+  if (s.game && (s.phase === "InProgress" || s.phase === "GameStart")) return mmss(s.game.time + dt);
+  if (s.game && IN_GAME.includes(s.phase)) return s.game.clock;
+  return "";
+}
+setInterval(() => { $("clock").textContent = clockText(lastStatus, (Date.now() - statusAt) / 1000); }, 1000);
+
 /* ============================== main render ============================== */
 let lastPhase = null;
 function render(s) {
@@ -631,22 +661,20 @@ function render(s) {
   if (s.cs_goal) csGoal = s.cs_goal;
   if (s.favorites) { favorites = s.favorites; renderFavList(); }
 
-  let clock = "", sub = "";
+  lastStatus = s;
+  statusAt = Date.now();
+  let sub = "";
   if (s.phase === "Matchmaking") {
-    clock = mmss(s.time_in_queue);
     sub = s.estimated ? `Estimated: ${mmss(s.estimated)}` : "";
   } else if (s.phase === "ReadyCheck") {
-    clock = s.ready_timer != null ? Math.max(0, Math.ceil(10 - s.ready_timer)) + "s" : "";
     sub = s.my_response === "Accepted" ? "✔ You accepted — waiting for others"
         : s.my_response === "Declined" ? "✖ You declined" : "Tap ACCEPT now!";
   } else if (s.phase === "ChampSelect") {
-    clock = s.cs_time_left != null ? s.cs_time_left + "s" : "";
     sub = CS_PHASES[s.cs_phase] || s.cs_phase || "";
   } else if (IN_GAME.includes(s.phase) && s.game) {
-    clock = s.game.clock;
     sub = s.game.mode === "JADE" ? "League Classic" : (s.game.mode || "");
   }
-  $("clock").textContent = clock;
+  $("clock").textContent = clockText(s, 0);
   $("sub").textContent = sub;
   $("rankLine").textContent = s.rank_line || "";
   show("rankLine", s.rank_line && !IN_GAME.includes(s.phase) && s.phase !== "ChampSelect");
@@ -730,7 +758,7 @@ function renderRank(r, ladder) {
   $("presets").innerHTML = (r.presets || []).map(p =>
     `<button class="preset" data-wr="${+p.wr}">${esc(p.label)}: ${+p.wr}%</button>`).join("");
   if (wrChoice == null) wrChoice = r.win_rate;
-  $("wr").value = wrChoice;
+  if (document.activeElement !== $("wr")) $("wr").value = wrChoice;
   renderForecast();
 
   $("dropLine").textContent = r.at_floor
@@ -941,11 +969,24 @@ $("favAdd").onkeydown = e => { if (e.key === "Enter") $("favAddBtn").click(); };
 window.scrollTo(0, 0);
 loadChamps();
 setTab(location.hash.slice(1));
-call("GET", "/api/status");
-setInterval(() => {
-  call("GET", "/api/status");
-  if (tab === "stats" && (statsDirty || Date.now() - statsAt > 30000)) loadStats();
-}, 1000);
+// How often the page asks your PC for new data (timers tick locally in between).
+// League Remote itself still checks the League client every 0.5 s, so alerts stay instant.
+function refreshDelay(s) {
+  if (!s || !s.connected) return 5000;
+  if (s.phase === "ReadyCheck" || s.phase === "ChampSelect") return 1000;  // 10 s accept window, picks
+  if (s.phase === "Matchmaking") return 2000;                             // spot a match quickly
+  if (["GameStart", "InProgress", "Reconnect"].includes(s.phase)) return 3000;
+  return 5000;                                                            // idle, lobby, post-game
+}
+let refreshTimer = null;
+async function refresh() {
+  clearTimeout(refreshTimer);
+  await call("GET", "/api/status");
+  if (tab === "stats" && (statsDirty || Date.now() - statsAt > 30000)) await loadStats();
+  refreshTimer = setTimeout(refresh, refreshDelay(lastStatus));
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+refresh();
 </script>
 </body>
 </html>

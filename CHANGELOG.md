@@ -3,6 +3,20 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.7.1] - 2026-09-24
+### Fixed
+- Constant flicker in champ select: every second the page rebuilt your team,
+  favorites and bans, recreating every icon (measured: 36 icons per 6 s). Sections
+  are now only redrawn when their content changes (measured after: 0).
+- Countdown could jump back and forth by a second between refreshes.
+
+### Changed
+- The page refreshes less often: every 1 s only during match found and champ
+  select, 2 s in queue, 3 s in game, 5 s otherwise (and right away when you
+  come back to the tab). Queue, champ select and game timers tick locally in
+  between. League Remote itself still checks the client every 0.5 s, so alerts
+  are as fast as before.
+
 ## [1.7.0] - 2026-09-24
 ### Removed
 - Auto-accept. Riot's Terms of Service (7.1) forbid automation programs and Riot

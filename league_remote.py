@@ -42,7 +42,7 @@ import autostart
 import ingame
 import rank
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -271,7 +271,7 @@ class Notifier:
         if swap_up:
             actions.append({"action": "http", "label": f"Ask #{swap_up['order']} to swap", "method": "POST",
                             "url": f"{self.control_url}/api/cs/swap-up"})
-        msg = f"~{seconds}s left in this phase." if seconds else "Get back to your PC!"
+        msg = f"~{int(seconds)}s left in this phase." if seconds else "Get back to your PC!"
         if aegis:
             msg += (f"\nAegis of Valor possible: {aegis['role_name']} is your #{aegis['pref']} role - "
                     f"a win can give +{aegis['bonus']}% SP. Don't swap roles.")
@@ -300,7 +300,7 @@ class Notifier:
         for cid, name in favorites[:2]:
             actions.append({"action": "http", "label": f"{verb} {name}", "method": "POST",
                             "clear": True, "url": f"{self.control_url}/api/cs/lock?champ={cid}"})
-        left = f" - {seconds}s left" if seconds else ""
+        left = f" - {int(seconds)}s left" if seconds else ""
         self.send(f"YOUR TURN TO {kind.upper()}{left}",
                   "Open the page to choose, or tap a favorite.",
                   priority=5, tags=["rotating_light", "crossed_swords"], actions=actions)
@@ -505,7 +505,7 @@ class Watcher:
             since = timer.get("internalNowInEpochMs")
             if isinstance(since, (int, float)) and since > 0:
                 left -= max(0, time.time() * 1000 - since)
-            left = max(0, round(left / 1000))
+            left = max(0, round(left / 1000, 1))  # tenths: the page counts down smoothly
         else:
             left = None
 
