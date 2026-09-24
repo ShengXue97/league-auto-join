@@ -231,7 +231,7 @@
 </header>
 
 <!-- ============================== LIVE ============================== -->
-<main class="layout" id="live">
+<main class="layout" id="page-live">
   <div class="col">
     <div class="card" id="statusCard">
       <div class="phase" id="phase">Connecting…</div>
@@ -329,7 +329,7 @@
 </main>
 
 <!-- ============================== STATS ============================== -->
-<main class="layout" id="stats" hidden>
+<main class="layout" id="page-stats" hidden>
   <div class="col">
     <div class="card" id="statsLoading">
       <div class="hint">Loading your match history and rank from the League client…</div>
@@ -849,10 +849,16 @@ function renderStats(st) {
 }
 
 /* ============================== tabs ============================== */
+// The page fills in after data arrives, so the browser's own scroll restore on refresh
+// lands in the wrong place. Always start at the top instead.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
 function setTab(t) {
+  const changed = tab !== (t === "stats" ? "stats" : "live");
   tab = t === "stats" ? "stats" : "live";
-  show("live", tab === "live");
-  show("stats", tab === "stats");
+  show("page-live", tab === "live");
+  show("page-stats", tab === "stats");
+  if (changed) window.scrollTo(0, 0);
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
   if (tab === "stats") loadStats();
@@ -932,6 +938,7 @@ $("favAddBtn").onclick = () => {
 $("favAdd").onkeydown = e => { if (e.key === "Enter") $("favAddBtn").click(); };
 
 /* ============================== start ============================== */
+window.scrollTo(0, 0);
 loadChamps();
 setTab(location.hash.slice(1));
 call("GET", "/api/status");

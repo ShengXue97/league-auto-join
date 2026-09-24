@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, urlparse
 import ingame
 import rank
 
-__version__ = "1.5.2"
+__version__ = "1.5.3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")

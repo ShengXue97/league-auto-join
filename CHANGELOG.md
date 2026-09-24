@@ -3,6 +3,14 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.5.3] - 2026-09-24
+### Fixed
+- Wrong scroll position when loading or refreshing the page: the browser restored
+  the old scroll position before the data had loaded, and the page sections had
+  ids equal to the URL fragment (#live / #stats), which the browser treats as
+  "jump here". Sections are renamed, scroll restoration is manual, and each tab
+  starts at the top.
+
 ## [1.5.2] - 2026-09-24
 ### Fixed
 - Stats overview showed 98 games / 49-49 while the Live tab showed 60W 54L.
