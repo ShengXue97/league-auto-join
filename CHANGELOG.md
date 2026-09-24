@@ -3,6 +3,27 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [1.3.0] - 2026-09-24
+### Added
+- In-game second screen (read-only, from Riot's official Live Client Data API):
+  your KDA, CS, CS/min vs your goal (`cs_goal`), kill participation, vision,
+  gold, items and respawn countdown; Tab-style scoreboard; kill/objective feed.
+- Alerts: game loaded, reconnect needed (with a RECONNECT button), and a
+  VICTORY/DEFEAT summary with personal bests and today's record.
+- Match history (`matches.jsonl`, git-ignored) from the client's end-of-game
+  stats, with a fallback to the last live snapshot.
+- Stats tab: win rate, W-L, streak, today's record, CS/min trend vs goal,
+  per-champion stats (favorites first) and recent games.
+- Responsive layout: one column on phones, two on tablets and desktop.
+- Settings (auto-accept, favorites editor) only show outside champ select and games,
+  so those screens stay focused.
+- `tests/test_ingame.py`, including safety checks that no hidden enemy info
+  (respawn timers, dead state, spells, gold) reaches the page.
+
+### Security
+- Player and champion names are HTML-escaped on the page; previously a
+  crafted in-game name could inject markup into the control page.
+
 ## [1.2.0] - 2026-09-24
 ### Added
 - Pick order swaps: team listed in pick order (#1-#5), Swap buttons for players

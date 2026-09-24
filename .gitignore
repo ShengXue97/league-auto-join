@@ -9,3 +9,6 @@ __pycache__/
 
 # Local scratch files (screenshots etc.)
 tmp/
+
+# Your personal match history
+matches.jsonl

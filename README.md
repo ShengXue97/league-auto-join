@@ -46,10 +46,30 @@ in the "your turn" notification when available):
 "favorite_bans": ["Karthus"]
 ```
 
+## In game
+The **Live** tab becomes a second screen while you play: your KDA, CS/min against
+your goal (`cs_goal` in `config.json`, default 7.0), kill participation, vision,
+gold, items and respawn timer, plus a Tab-style scoreboard and kill feed.
+After each game you get a VICTORY/DEFEAT alert, and the game is saved to
+`matches.jsonl`. The **Stats** tab shows win rate, streaks, CS/min trend and
+per-champion stats.
+
+Works on phone, tablet and desktop browsers.
+
+## Safety (why this won't get you banned)
+- Reads only Riot's official **Live Client Data API** (served by the game at
+  `127.0.0.1:2999` for third-party apps) and the League client's own API.
+- Never reads game memory, injects into the game, draws over it, or sends
+  keyboard/mouse input - the things Vanguard looks for.
+- Shows nothing you can't already see in game: no enemy cooldown, ultimate,
+  summoner spell, jungle or respawn timers, no enemy gold estimates.
+  `tests/test_ingame.py` checks this.
+- Never picks, bans, swaps or accepts on its own unless you turn on auto-accept.
+
 ## Notes
 - Your phone must be on the same Wi-Fi as the PC for the buttons to work.
-- `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `port`.
-- Tests: `python tests/test_champ_select.py` (simulated champ select, no client needed).
+- `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
+- Tests: `python tests/test_champ_select.py` and `python tests/test_ingame.py` (simulated, no client needed).
 - If you miss champ select you dodge (queue lockout, and LP loss in ranked), so only turn on auto-accept if you'll be back in time.
 
 ## Versions

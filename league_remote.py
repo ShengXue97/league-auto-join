@@ -8,6 +8,9 @@ control page on your home Wi-Fi. Optional auto-accept toggle.
 Champion select: pick and ban from your phone. Nothing is ever picked or
 banned automatically - every choice and lock-in is your own tap.
 
+In game: read-only second-screen stats and a personal match history
+(see ingame.py for exactly what is and isn't read).
+
 Standard library only. Run:  python league_remote.py
 """
 
@@ -26,11 +29,14 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-__version__ = "1.2.0"
+import ingame
+
+__version__ = "1.3.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
+MATCHES_PATH = os.path.join(HERE, "matches.jsonl")
 
 DEFAULT_LOCKFILES = [
     r"C:\Riot Games\League of Legends\lockfile",
@@ -81,6 +87,8 @@ def load_config():
         # Champion names shown as one-tap buttons in the "your turn" notification
         "favorite_picks": [],
         "favorite_bans": [],
+        "notify_game": True,   # game loaded / reconnect needed / game over alerts
+        "cs_goal": 7.0,        # CS per minute target shown in game and in stats
         "lockfile": "",
     }
     for k, v in defaults.items():
@@ -294,7 +302,21 @@ class Watcher:
         self.last_event = ""
         self.notified_action = None
         self._champs = {}  # id -> name
+        self._aliases = {}  # "jade_pantheon" -> 60080
+        self._items = {}   # id -> icon path
         self._reset_cs_tracking()
+        self.match_log = ingame.MatchLog(MATCHES_PATH)
+        self._reset_game()
+
+    def _reset_game(self, game_id=None, pool=()):
+        self.game_id = game_id
+        self.game_pool = set(pool)    # champion ids in this game (from the client)
+        self.live = None              # latest ingame.summarize() result
+        self.live_ok = False
+        self._live_at = 0
+        self._live_captured = 0
+        self.game_loaded_sent = False
+        self.game_recorded = False
 
     def _reset_cs_tracking(self):
         self.notified_action = None
@@ -306,6 +328,7 @@ class Watcher:
         with self.lock:
             s = dict(self.status)
         s["version"] = __version__
+        s["cs_goal"] = self.cfg.get("cs_goal", 7.0)
         s["auto_accept"] = self.cfg["auto_accept"]
         s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
                           "ban": list(self.cfg.get("favorite_bans", []))}
@@ -356,6 +379,17 @@ class Watcher:
         elif self.last_phase == "ChampSelect":
             self._reset_cs_tracking()
 
+        in_game = ("GameStart", "InProgress", "Reconnect")
+        if phase in in_game and self.last_phase not in in_game:
+            self.start_game()  # reset before the first live read of a new game
+        if phase in in_game:
+            self.poll_live()
+        elif phase in ("WaitingForStats", "PreEndOfGame", "EndOfGame"):
+            self.try_record_eog()
+        if phase in ("GameStart", "InProgress", "Reconnect", "WaitingForStats", "PreEndOfGame", "EndOfGame"):
+            st["game"] = self.live
+            st["live_ok"] = self.live_ok
+
         with self.lock:
             was_connected = self.status.get("connected")
             self.status = st
@@ -376,7 +410,15 @@ class Watcher:
         if not self._champs:
             data = self.lcu.request("GET", "/lol-game-data/assets/v1/champion-summary.json") or []
             self._champs = {c["id"]: c["name"] for c in data if c.get("id", 0) > 0}
+            self._aliases = {c["alias"].lower(): c["id"] for c in data if c.get("id", 0) > 0 and c.get("alias")}
         return self._champs
+
+    def items(self):
+        """item id -> icon path in the client's game data."""
+        if not self._items:
+            data = self.lcu.request("GET", "/lol-game-data/assets/v1/items.json") or []
+            self._items = {i["id"]: i.get("iconPath") for i in data if i.get("iconPath")}
+        return self._items
 
     def resolve(self, name, pool):
         """Champion name -> id. Names exist twice (e.g. Pantheon 80 and League Classic
@@ -624,12 +666,96 @@ class Watcher:
         save_config(self.cfg)
         self.event(f"Favorite {kind}s: {', '.join(favs) or 'none'}")
 
+    # ------------------------------------------------ in game (read-only)
+
+    def start_game(self):
+        s = self.lcu.request("GET", "/lol-gameflow/v1/session") or {}
+        gd = s.get("gameData") or {}
+        pool = [p.get("championId") for p in gd.get("playerChampionSelections") or [] if p.get("championId")]
+        self._reset_game(gd.get("gameId"), pool)
+
+    def live_champ_id(self, player):
+        """Live data only has names ('Pantheon'); find the matching id for the icon."""
+        self.champions()
+        raw = player.get("rawChampionName") or ""
+        if "displayname_" in raw:
+            cid = self._aliases.get(raw.split("displayname_")[-1].lower())
+            if cid:
+                return cid
+        name = player.get("championName") or ""
+        return self.resolve(name, self.game_pool) or next(
+            (i for i, n in sorted(self._champs.items(), reverse=True) if n == name), 0)
+
+    def poll_live(self):
+        now = time.time()
+        if now - self._live_at < 1:
+            return
+        self._live_at = now
+        data = ingame.fetch_live()
+        self.live_ok = data is not None
+        if not data:
+            return
+        if now - self._live_captured > 120:  # study unfamiliar modes (League Classic)
+            self._live_captured = now
+            capture("live", data)
+        self.live = ingame.summarize(data, self.live_champ_id)
+        me = self.live.get("me")
+        if me and self.live["time"] > 0 and not self.game_loaded_sent:
+            self.game_loaded_sent = True
+            self.event(f"Game loaded - you're {me['champ']}")
+            if self.cfg.get("notify_game", True):
+                self.notifier.send("GAME LOADED", f"You're in as {me['champ']}. GLHF!",
+                                   priority=4, tags=["crossed_swords"])
+
+    def try_record_eog(self):
+        if self.game_recorded:
+            return
+        try:
+            eog = self.lcu.request("GET", "/lol-end-of-game/v1/eog-stats-block")
+        except urllib.error.HTTPError:
+            eog = None
+        if not eog:
+            return
+        capture("eog", eog)
+        rec = ingame.record_from_eog(eog, lambda cid: self.champions().get(cid))
+        if rec:
+            self.save_record(rec)
+
+    def record_from_live_fallback(self):
+        """No end-of-game stats (e.g. the mode doesn't provide them): use the last live snapshot."""
+        if self.game_recorded or not self.live:
+            return
+        rec = ingame.record_from_live(self.game_id or f"live-{int(time.time())}", self.live)
+        if rec:
+            self.save_record(rec)
+
+    def save_record(self, rec):
+        self.game_recorded = True
+        added, notes = self.match_log.add(rec)
+        if not added:
+            return
+        result = "VICTORY" if rec["win"] else "DEFEAT" if rec["win"] is False else "GAME OVER"
+        line = f"{rec['champ']} {rec['k']}/{rec['d']}/{rec['a']} - {rec['cs_min']} CS/min"
+        if rec.get("kp") is not None:
+            line += f" - {rec['kp']}% KP"
+        self.event(f"{result}: {line}")
+        if not self.cfg.get("notify_game", True):
+            return
+        st = self.match_log.stats()
+        today = st["today"]
+        body = "\n".join([line] + notes + [f"Today: {today['wins']}W {today['losses']}L"])
+        self.notifier.send(result, body, priority=3,
+                           tags=["trophy" if rec["win"] else "skull", "bar_chart"],
+                           actions=[{"action": "view", "label": "My stats",
+                                     "url": self.notifier.control_url + "/#stats", "clear": True}])
+
     CAPTURE_ENDPOINTS = [
         "/lol-gameflow/v1/session",
         "/lol-champ-select/v1/session",
         "/lol-champ-select/v1/pickable-champion-ids",
         "/lol-champ-select/v1/bannable-champion-ids",
         "/lol-lobby-team-builder/champ-select/v1/session",
+        "/lol-end-of-game/v1/eog-stats-block",
     ]
 
     def _snapshot_endpoints(self):
@@ -691,6 +817,18 @@ class Watcher:
         elif new == "Matchmaking" and old != "ReadyCheck":
             self.event("Entered queue")
 
+        in_game = ("GameStart", "InProgress", "Reconnect")
+        game_over = ("WaitingForStats", "PreEndOfGame", "EndOfGame")
+        if new == "Reconnect":
+            self.event("Disconnected from the game - reconnect needed")
+            if self.cfg.get("notify_game", True):
+                self.notifier.send("RECONNECT NEEDED", "You got disconnected from your game!", priority=5,
+                                   tags=["rotating_light", "electric_plug"],
+                                   actions=[{"action": "http", "label": "RECONNECT", "method": "POST",
+                                             "clear": True, "url": self.notifier.control_url + "/api/reconnect"}])
+        if (old in game_over or old in in_game) and new not in game_over and new not in in_game:
+            self.record_from_live_fallback()
+
 
 # ---------------------------------------------------------------- web server
 
@@ -710,15 +848,22 @@ def make_handler(cfg, lcu, watcher):
             self.end_headers()
             self.wfile.write(body)
 
-        def _icon(self, cid):
+        def _icon(self, cid, item=False):
             if not cid.isdigit():
                 return self._json(404, {"error": "bad id"})
-            if cid not in icon_cache:
+            key = ("item" if item else "champ", cid)
+            if key not in icon_cache:
                 try:
-                    icon_cache[cid] = lcu.raw(f"/lol-game-data/assets/v1/champion-icons/{cid}.png")
+                    if item:
+                        path = watcher.items().get(int(cid))
+                        if not path:
+                            return self._json(404, {"error": "unknown item"})
+                    else:
+                        path = f"/lol-game-data/assets/v1/champion-icons/{cid}.png"
+                    icon_cache[key] = lcu.raw(path)
                 except (ConnectionError, urllib.error.HTTPError):
                     return self._json(404, {"error": "no icon"})
-            body, ctype = icon_cache[cid]
+            body, ctype = icon_cache[key]
             self.send_response(200)
             self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "max-age=86400")
@@ -745,6 +890,10 @@ def make_handler(cfg, lcu, watcher):
                     self._json(503, {"error": str(e)})
             elif url.path.startswith("/icon/"):
                 self._icon(url.path.rsplit("/", 1)[-1])
+            elif url.path.startswith("/item/"):
+                self._icon(url.path.rsplit("/", 1)[-1], item=True)
+            elif url.path == "/api/stats":
+                self._json(200, watcher.match_log.stats(cfg.get("favorite_picks") or []))
             else:
                 self._json(404, {"error": "not found"})
 
@@ -777,6 +926,9 @@ def make_handler(cfg, lcu, watcher):
                     except ValueError as e:
                         watcher.event(f"Phone: {e}")
                         return self._json(409, {"error": str(e)})
+                elif url.path == "/api/reconnect":
+                    lcu.request("POST", "/lol-gameflow/v1/reconnect")
+                    watcher.event("Reconnect requested from phone")
                 elif url.path == "/api/auto":
                     on = q.get("on", [""])[0]
                     cfg["auto_accept"] = (on == "1") if on else not cfg["auto_accept"]
