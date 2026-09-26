@@ -73,6 +73,16 @@ class UpdateChecker:
             self.on_new(found)
         return found
 
+    def check_now(self):
+        """Manual "Check for updates": returns (result, message), result = update | latest | error."""
+        try:
+            found = self.check()
+        except Exception:
+            return "error", "Couldn't check for updates - are you online?"
+        if found:
+            return "update", f"League Remote v{found['version']} is available."
+        return "latest", f"You're up to date (v{self.current})."
+
     def start(self):
         def loop():
             time.sleep(20)  # let the app start first

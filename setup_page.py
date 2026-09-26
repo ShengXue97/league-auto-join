@@ -88,6 +88,8 @@ def render_subscribe(cfg):
   ol {{ text-align:left; padding-left:22px; }}
   a {{ color:#0ac8b9; }}
   [hidden] {{ display:none !important; }}
+  .step {{ border-top:1px solid #ffffff14; margin-top:18px; padding-top:6px; }}
+  #testmsg {{ min-height:1.2em; }}
 </style></head><body><div class="wrap">
 <img src="/assets/icon.png" alt="">
 <h1>Get League Remote alerts</h1>
@@ -106,6 +108,17 @@ def render_subscribe(cfg):
 <ol><li>Open <b>ntfy</b> and tap <b>+</b></li>
   <li>Paste the topic (keep the server as <b>ntfy.sh</b>) and tap <b>Subscribe</b></li></ol>
 <p style="font-size:13px">Keep the topic private: anyone who knows it can see your alerts.</p>
+
+<div class="step">
+  <p>3. Check it works:</p>
+  <button class="btn alt" id="test" type="button">Send a test alert</button>
+  <p id="testmsg"></p>
+</div>
+<div class="step">
+  <p>4. You're set! Open League Remote:</p>
+  <a class="btn" href="/">Open League Remote</a>
+  <p id="homescreen">Tip: add it to your home screen so it opens like an app.</p>
+</div>
 </div>
 <script>
 const ua = navigator.userAgent;
@@ -116,6 +129,20 @@ if (ios) {{  // ntfy only documents subscribe links for Android: go straight to 
   document.getElementById("auto").hidden = true;
   document.getElementById("manual-title").hidden = false;
 }}
+document.getElementById("homescreen").innerHTML = ios
+  ? "Tip: tap <b>Share</b> → <b>Add to Home Screen</b> on the next page so it opens like an app."
+  : android ? "Tip: tap <b>⋮</b> → <b>Add to Home screen</b> on the next page so it opens like an app."
+  : "Tip: add it to your home screen so it opens like an app.";
+
+document.getElementById("test").onclick = async () => {{
+  const m = document.getElementById("testmsg");
+  m.textContent = "Sending…";
+  try {{
+    const r = await fetch("/api/test-notification", {{ method: "POST" }});
+    m.textContent = r.ok ? "Sent! It should pop up within a few seconds. Nothing? Check that you subscribed to the topic above."
+                         : "Couldn't send it - try again.";
+  }} catch (e) {{ m.textContent = "Couldn't reach your PC - is your phone on the same Wi-Fi?"; }}
+}};
 
 // navigator.clipboard only works on https pages; this page is http on your home Wi-Fi,
 // so fall back to the older copy command, which works there on Android and iPhone.
@@ -194,6 +221,7 @@ def render(cfg, control_url, version):
 <header>
   <img src="/assets/icon.png" alt="">
   <div><h1>Set up your phone</h1><div class="muted">League Remote v{e(version)} is running on this PC. Your phone must be on the same Wi-Fi.</div></div>
+  <a class="btn" href="/" style="margin:0 0 0 auto">Open League Remote</a>
 </header>
 {network_warning(public_networks())}
 <div class="steps">

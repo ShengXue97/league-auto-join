@@ -3,7 +3,8 @@
 import webbrowser
 
 
-def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_info, on_quit, update_now=None):
+def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_info, on_quit, update_now=None,
+              check_now=None):
     """Build the tray icon. Call .run() on the main thread; .stop() removes it.
     startup_on() -> bool, startup_toggle(), update_info() -> {"version", "url", "state", "progress"} or None,
     update_now() starts the one-click update (None: just open the release page)."""
@@ -35,6 +36,19 @@ def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_
         else:
             webbrowser.open(info["url"])
 
+    def check_updates(icon, item):
+        def run():
+            result, message = check_now()
+            if result == "update":
+                message += " Right-click the bell and choose Update now." if update_now else " Right-click the bell to download it."
+            icon.update_menu()
+            try:
+                icon.notify(message, "League Remote")
+            except Exception:
+                pass
+        import threading
+        threading.Thread(target=run, daemon=True).start()
+
     def toggle_startup(icon, item):
         startup_toggle()
         icon.update_menu()
@@ -48,6 +62,7 @@ def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_
         pystray.MenuItem("Open League Remote", open_page, default=True),  # also on double-click
         pystray.MenuItem("Phone setup (QR codes)", open_setup),
         pystray.MenuItem(update_text, do_update, visible=lambda item: bool(update_info())),
+        pystray.MenuItem("Check for updates", check_updates, visible=lambda item: check_now is not None),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Start with Windows", toggle_startup, checked=lambda item: startup_on()),
         pystray.MenuItem(f"League Remote v{version}", None, enabled=False),

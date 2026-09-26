@@ -3,6 +3,17 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.1.1] - 2026-09-26
+### Added
+- "Check for updates" in the tray menu and on the control page (answers right
+  away: up to date, update available, or can't check).
+
+### Fixed
+- No more dead ends: the phone subscribe page now continues with "Send a test
+  alert" and "Open League Remote" (with Add to Home Screen tips for iPhone and
+  Android), the PC setup page links to the control page, and old or mistyped
+  addresses redirect to the app instead of showing an error.
+
 ## [2.1.0] - 2026-09-26
 ### Added
 - One-click update: "Update now" in the tray menu and on the control page. League

@@ -83,6 +83,14 @@ check(len(seen) == 1, "no repeat notification for the same version")
 check(update.UpdateChecker("9.9.9", api_url=API).check() is None, "no update when already on the latest")
 check(update.UpdateChecker("10.0.0", api_url=API).check() is None, "no 'update' to an older version")
 
+# ------------------------------------------------------------ manual "Check for updates"
+check(update.UpdateChecker("2.0.2", api_url=API).check_now() == ("update", "League Remote v9.9.9 is available."),
+      "manual check finds the update")
+check(update.UpdateChecker("9.9.9", api_url=API).check_now() == ("latest", "You're up to date (v9.9.9)."),
+      "manual check says up to date")
+check(update.UpdateChecker("2.0.2", api_url="http://127.0.0.1:1/nothing").check_now()[0] == "error",
+      "manual check offline -> clear error, no crash")
+
 # ------------------------------------------------------------ one-click update
 check(u.update_now(lambda m: None), "update starts")
 check(u.update_now(lambda m: None) is False, "second click while busy is ignored")

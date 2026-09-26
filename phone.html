@@ -351,7 +351,9 @@
     </div>
     </div>
     <div class="log" id="log"></div>
-    <div class="log"><span id="version"></span> · <a href="/setup" style="color:var(--muted)">Phone setup</a></div>
+    <div class="log"><span id="version"></span> ·
+      <a href="#" id="checkUpdate" style="color:var(--muted)">Check for updates</a> ·
+      <a href="/setup" style="color:var(--muted)">Phone setup</a></div>
     <div class="legal">League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or
       anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties
       are trademarks or registered trademarks of Riot Games, Inc.</div>
@@ -971,6 +973,20 @@ $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("reconnect").onclick = () => call("POST", "/api/reconnect");
 $("startup").onclick = () => call("POST", "/api/startup");
+$("checkUpdate").onclick = async e => {
+  e.preventDefault();
+  const link = $("checkUpdate");
+  link.textContent = "Checking…";
+  try {
+    const r = await fetch("/api/check-update", { method: "POST", cache: "no-store" });
+    const data = await r.json();
+    render(data);
+    toast(data.check.message, data.check.result === "error");
+  } catch (err) {
+    toast("Can't reach your PC — is your phone on the same Wi-Fi?", true);
+  }
+  link.textContent = "Check for updates";
+};
 $("updateCard").onclick = async e => {
   if (!e.target.closest("#updateNow")) return;
   if (await call("POST", "/api/update")) toast("Updating… approve the Windows prompt on your PC");

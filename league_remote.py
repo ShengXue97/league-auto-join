@@ -45,7 +45,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -1257,8 +1257,13 @@ def make_handler(cfg, lcu, watcher):
                 self._icon(url.path.rsplit("/", 1)[-1], item=True)
             elif url.path == "/api/stats":
                 self._json(200, watcher.stats_payload())
-            else:
+            elif url.path.startswith("/api/") or url.path.startswith("/icon/") or url.path.startswith("/item/"):
                 self._json(404, {"error": "not found"})
+            else:  # a mistyped or old page address: go to the app instead of a dead page
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
 
         def do_POST(self):
             url = urlparse(self.path)
@@ -1295,6 +1300,9 @@ def make_handler(cfg, lcu, watcher):
                     cfg["auto_accept"] = (on == "1") if on else not cfg.get("auto_accept")
                     save_config(cfg)
                     watcher.event(f"Auto-accept {'ON' if cfg['auto_accept'] else 'OFF'}")
+                elif url.path == "/api/check-update":
+                    result, message = watcher.updater.check_now()
+                    return self._json(200, {**watcher.snapshot(), "check": {"result": result, "message": message}})
                 elif url.path == "/api/update":
                     if not FROZEN:
                         return self._json(409, {"error": "Running from source: download the new version from GitHub"})
@@ -1465,7 +1473,8 @@ def main():
                 autostart.install_startup()
         TRAY = tray.make_icon(ICON_PATH, local_url, __version__, autostart.startup_installed, toggle_startup,
                               watcher.updater.status, quit_app,
-                              update_now=(lambda: watcher.updater.update_now(log)) if FROZEN else None)
+                              update_now=(lambda: watcher.updater.update_now(log)) if FROZEN else None,
+                              check_now=watcher.updater.check_now)
         def tray_ready(icon):
             icon.visible = True
             if just_updated:
