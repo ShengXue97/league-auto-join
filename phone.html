@@ -689,8 +689,17 @@ function render(s) {
   $("startup").classList.toggle("on", !!s.startup);
   $("auto").classList.toggle("on", !!s.auto_accept);
   show("updateCard", !!s.update);
-  if (s.update) $("updateCard").innerHTML =
-    `<b>League Remote v${esc(s.update.version)} is available.</b> <a href="${esc(s.update.url)}" target="_blank" rel="noopener">Download</a>`;
+  if (s.update) {
+    const u = s.update, v = esc(u.version);
+    $("updateCard").innerHTML =
+      u.state === "downloading" ? `<b>Downloading v${v}… ${+u.progress}%</b><div class="bar" style="margin-top:8px"><i style="width:${+u.progress}%"></i></div>`
+      : u.state === "installing" ? `<b>Installing v${v}…</b><div class="hint">Approve the Windows prompt on your PC. League Remote restarts by itself.</div>`
+      : `<div class="row"><div><b>League Remote v${v} is available.</b>` +
+        (u.state === "error" ? `<div class="hint warn">${esc(u.message)}</div>` : "") +
+        `<div class="hint"><a href="${esc(u.url)}" target="_blank" rel="noopener">What's new</a></div></div>` +
+        (s.can_self_update ? `<button class="small go" id="updateNow">UPDATE NOW</button>`
+                           : `<a class="small go" href="${esc(u.url)}" target="_blank" rel="noopener">DOWNLOAD</a>`) + `</div>`;
+  }
   $("log").textContent = s.last_event || "";
   if (s.version) $("version").textContent = `v${s.version}`;
   if (s.cs_goal) csGoal = s.cs_goal;
@@ -962,6 +971,10 @@ $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("reconnect").onclick = () => call("POST", "/api/reconnect");
 $("startup").onclick = () => call("POST", "/api/startup");
+$("updateCard").onclick = async e => {
+  if (!e.target.closest("#updateNow")) return;
+  if (await call("POST", "/api/update")) toast("Updating… approve the Windows prompt on your PC");
+};
 $("auto").onclick = () => call("POST", "/api/auto");
 $("grid").onclick = e => {
   const b = e.target.closest(".champ");

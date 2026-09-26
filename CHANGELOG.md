@@ -3,6 +3,22 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.1.0] - 2026-09-26
+### Added
+- One-click update: "Update now" in the tray menu and on the control page. League
+  Remote downloads the new installer, checks it against GitHub's SHA-256 and size
+  (a corrupted or tampered file is never run), installs it silently and restarts
+  on the new version, keeping your settings. Windows asks once for permission.
+- "League Remote was updated to vX" notification after an update.
+
+### Fixed
+- "Subscribe in ntfy" on Android now uses an intent link (opens the ntfy app, or
+  the Play Store if it isn't installed). On iPhone, where ntfy doesn't document
+  subscribe links, the page goes straight to the copy-and-paste steps.
+- "Copy topic" didn't work: browsers block the modern clipboard API on http pages.
+  It now falls back to the classic copy command and says "Copied!" only when it
+  really copied.
+
 ## [2.0.2] - 2026-09-26
 ### Fixed
 - The ntfy QR code on the setup page didn't work: phone cameras won't open ntfy://

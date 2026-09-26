@@ -52,6 +52,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""L
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""League Remote"" dir=in action=allow program=""{app}\LeagueRemote.exe"" enable=yes profile=private,public"; Flags: runhidden; Tasks: publicnet
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--install-startup"; Flags: runhidden runasoriginaluser; Tasks: startup
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--show-setup"; Description: "Start League Remote and set up my phone"; Flags: postinstall nowait skipifsilent runasoriginaluser
+; one-click updates install silently: start the new version again afterwards
+Filename: "{app}\LeagueRemote.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--stop"; Flags: runhidden; RunOnceId: "StopApp"

@@ -45,7 +45,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.0.2"
+__version__ = "2.1.0"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -412,7 +412,8 @@ class Watcher:
         s["cs_goal"] = self.cfg.get("cs_goal", 7.0)
         s["startup"] = autostart.startup_installed()
         s["auto_accept"] = bool(self.cfg.get("auto_accept"))
-        s["update"] = self.updater.latest if getattr(self, "updater", None) else None
+        s["update"] = self.updater.status() if getattr(self, "updater", None) else None
+        s["can_self_update"] = FROZEN  # one-click update only for the installed app
         e = self.rank_entry
         s["rank_line"] = f"{rank.describe(e['pos'])['text']} · {e['wins']}W {e['losses']}L" if e else None
         s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
@@ -1294,6 +1295,12 @@ def make_handler(cfg, lcu, watcher):
                     cfg["auto_accept"] = (on == "1") if on else not cfg.get("auto_accept")
                     save_config(cfg)
                     watcher.event(f"Auto-accept {'ON' if cfg['auto_accept'] else 'OFF'}")
+                elif url.path == "/api/update":
+                    if not FROZEN:
+                        return self._json(409, {"error": "Running from source: download the new version from GitHub"})
+                    if not watcher.updater.update_now(log):
+                        return self._json(409, {"error": watcher.updater.message or "An update is already running"})
+                    watcher.event("Updating League Remote - approve the Windows prompt on your PC")
                 elif url.path == "/api/test-notification":
                     watcher.notifier.match_found()
                     watcher.event("Sent a test alert to your phone")
@@ -1377,6 +1384,11 @@ def main():
 
     first_run = not os.path.exists(CONFIG_PATH)
     cfg = load_config()
+    # remember the version, to say "updated to vX" once after an update
+    just_updated = not first_run and cfg.get("last_version") not in (None, __version__)
+    if cfg.get("last_version") != __version__:
+        cfg["last_version"] = __version__
+        save_config(cfg)
     ip = lan_ip()
     control_url = f"http://{ip}:{cfg['port']}"
     local_url = f"http://localhost:{cfg['port']}"
@@ -1452,9 +1464,15 @@ def main():
             else:
                 autostart.install_startup()
         TRAY = tray.make_icon(ICON_PATH, local_url, __version__, autostart.startup_installed, toggle_startup,
-                              lambda: watcher.updater.latest, quit_app)
+                              watcher.updater.status, quit_app,
+                              update_now=(lambda: watcher.updater.update_now(log)) if FROZEN else None)
         def tray_ready(icon):
             icon.visible = True
+            if just_updated:
+                try:
+                    icon.notify(f"League Remote was updated to v{__version__}.", "League Remote updated")
+                except Exception:
+                    pass
             if show_setup:  # tell people where League Remote lives now that it has no window
                 try:
                     icon.notify("League Remote is running. Find the bell icon near the clock (click ^ if it's "

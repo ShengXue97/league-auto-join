@@ -1,6 +1,7 @@
 """The /setup page: QR codes to connect a phone in under a minute."""
 
 import html
+import json
 import urllib.parse
 
 import segno
@@ -10,6 +11,11 @@ APP_STORE = "https://apps.apple.com/us/app/ntfy/id1625396347"
 RIOT_NOTICE = ("League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games "
                "or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all "
                "associated properties are trademarks or registered trademarks of Riot Games, Inc.")
+
+
+def json_str(v):
+    """Safe JavaScript string literal inside an HTML <script>."""
+    return json.dumps(v).replace("<", "\\u003c")
 
 
 def qr(data):
@@ -46,15 +52,20 @@ def subscribe_links(cfg):
     server = cfg["ntfy_server"].rstrip("/")
     host = server.split("://", 1)[-1]
     topic = cfg["ntfy_topic"]
-    # ntfy app deep link (docs.ntfy.sh): opens the app and subscribes. Phone cameras often won't open
-    # custom links from a QR code, so the QR code opens /subscribe, where this is a tappable button.
-    deep = f"ntfy://{host}/{urllib.parse.quote(topic)}?display={urllib.parse.quote('League Remote')}"
-    return topic, deep, f"{server}/{urllib.parse.quote(topic)}"
+    q = urllib.parse.quote
+    path = f"{host}/{q(topic)}?display={q('League Remote')}"
+    # ntfy deep link (docs.ntfy.sh, Android). Phone cameras often won't open it from a QR code, and some
+    # browsers block it, so on Android we use an intent link: Chrome opens the ntfy app (package
+    # io.heckel.ntfy) or, if it isn't installed, the Play Store.
+    deep = f"ntfy://{path}"
+    intent = (f"intent://{path}#Intent;scheme=ntfy;package=io.heckel.ntfy;"
+              f"S.browser_fallback_url={q(PLAY_STORE, safe='')};end")
+    return topic, deep, intent
 
 
 def render_subscribe(cfg):
     """/subscribe - opened on the phone by scanning the QR code."""
-    topic, deep, web = subscribe_links(cfg)
+    topic, deep, intent = subscribe_links(cfg)
     e = html.escape
     return f"""<!doctype html>
 <html lang="en"><head>
@@ -62,35 +73,79 @@ def render_subscribe(cfg):
 <title>Subscribe to League Remote alerts</title>
 <link rel="icon" href="/assets/icon.png">
 <style>
+  * {{ box-sizing:border-box; }}
   body {{ margin:0; background:#010a13; color:#f0e6d2; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px 18px; }}
   .wrap {{ max-width:460px; margin:0 auto; text-align:center; }}
   img {{ width:72px; height:72px; }}
   h1 {{ color:#c8aa6e; font-size:24px; margin:10px 0 6px; }}
   p, li {{ color:#a09b8c; line-height:1.5; }}
-  .btn {{ display:block; margin:16px 0; padding:18px; border-radius:10px; border:2px solid #0ac8b9; background:#0ac8b922;
-          color:#f0e6d2; font-size:19px; font-weight:800; text-decoration:none; }}
-  .alt {{ border-color:#785a28; background:none; font-size:16px; font-weight:700; }}
-  code {{ display:inline-block; background:#1e2328; color:#c8aa6e; padding:6px 10px; border-radius:6px; font-size:17px; word-break:break-all; }}
-  ol {{ text-align:left; }}
+  .btn {{ display:block; width:100%; margin:14px 0; padding:18px; border-radius:10px; border:2px solid #0ac8b9; background:#0ac8b922;
+          color:#f0e6d2; font:inherit; font-size:19px; font-weight:800; text-decoration:none; cursor:pointer; }}
+  .alt {{ border-color:#c8aa6e; background:#c8aa6e22; }}
+  .ok {{ border-color:#0acb6e; background:#0acb6e33; }}
+  code {{ display:inline-block; background:#1e2328; color:#c8aa6e; padding:8px 12px; border-radius:6px; font-size:18px;
+          word-break:break-all; user-select:all; -webkit-user-select:all; }}
+  ol {{ text-align:left; padding-left:22px; }}
   a {{ color:#0ac8b9; }}
+  [hidden] {{ display:none !important; }}
 </style></head><body><div class="wrap">
 <img src="/assets/icon.png" alt="">
 <h1>Get League Remote alerts</h1>
 <p>1. Install the free <b>ntfy</b> app:
   <a href="{PLAY_STORE}">Google Play</a> · <a href="{APP_STORE}">App Store</a></p>
-<p>2. Then subscribe:</p>
-<a class="btn" href="{e(deep)}">Subscribe in ntfy</a>
-<p>Button didn't open ntfy? Add it by hand:</p>
+
+<div id="auto">
+  <p>2. Then tap:</p>
+  <a class="btn" id="sub" href="{e(deep)}">Subscribe in ntfy</a>
+  <p>Didn't open ntfy? Add it by hand instead:</p>
+</div>
+<div id="manual-title" hidden><p>2. Copy your topic, then add it in ntfy:</p></div>
+
+<p><code id="topic">{e(topic)}</code></p>
+<button class="btn alt" id="copy" type="button">Copy topic</button>
 <ol><li>Open <b>ntfy</b> and tap <b>+</b></li>
-  <li>Enter this topic (leave the server as ntfy.sh):<br><code id="topic">{e(topic)}</code></li></ol>
-<button class="btn alt" id="copy">Copy topic</button>
+  <li>Paste the topic (keep the server as <b>ntfy.sh</b>) and tap <b>Subscribe</b></li></ol>
 <p style="font-size:13px">Keep the topic private: anyone who knows it can see your alerts.</p>
 </div>
 <script>
-document.getElementById("copy").onclick = async (ev) => {{
-  const t = document.getElementById("topic").textContent;
-  try {{ await navigator.clipboard.writeText(t); ev.target.textContent = "Copied!"; }}
-  catch (e) {{ getSelection().selectAllChildren(document.getElementById("topic")); ev.target.textContent = "Selected - copy it"; }}
+const ua = navigator.userAgent;
+const android = /Android/i.test(ua);
+const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (android) document.getElementById("sub").href = {json_str(intent)};  // opens the app, or the Play Store
+if (ios) {{  // ntfy only documents subscribe links for Android: go straight to the copy steps
+  document.getElementById("auto").hidden = true;
+  document.getElementById("manual-title").hidden = false;
+}}
+
+// navigator.clipboard only works on https pages; this page is http on your home Wi-Fi,
+// so fall back to the older copy command, which works there on Android and iPhone.
+function legacyCopy(text) {{
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);  // iPhone needs an explicit range
+  let ok = false;
+  try {{ ok = document.execCommand("copy"); }} catch (e) {{ ok = false; }}
+  ta.remove();
+  return ok;
+}}
+async function copyText(text) {{
+  if (navigator.clipboard && window.isSecureContext) {{
+    try {{ await navigator.clipboard.writeText(text); return true; }} catch (e) {{ /* fall back */ }}
+  }}
+  return legacyCopy(text);
+}}
+const btn = document.getElementById("copy");
+btn.onclick = async () => {{
+  const ok = await copyText(document.getElementById("topic").textContent.trim());
+  btn.textContent = ok ? "Copied!" : "Couldn't copy - long-press the topic above";
+  btn.classList.toggle("ok", ok);
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => {{ btn.textContent = "Copy topic"; btn.classList.remove("ok"); }}, 2500);
 }};
 </script>
 </body></html>"""

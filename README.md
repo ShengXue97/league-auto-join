@@ -19,7 +19,8 @@ second screen while you play, and track your League Classic rank.
    is set to **Public**, switch it to **Private** in Windows Settings (steps are shown).
 
 Right-click the tray icon for the control page, phone setup, *Start with Windows* and Quit.
-Updates: the tray and the control page tell you when a new version is out.
+Updates: when a new version is out, click **Update now** in the tray menu or on the control
+page. It downloads, verifies and installs it, then restarts (Windows asks once for permission).
 Uninstall from *Settings -> Apps* like any other app.
 
 ## Start with Windows
@@ -121,7 +122,7 @@ Works on phone, tablet and desktop browsers.
 - Build the app and installer: `pip install pyinstaller`, install
   [Inno Setup 6](https://jrsoftware.org/isinfo.php), then `python build.py`
   (output in `dist/`). The icon is drawn by `tools/make_icon.py`.
-- Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py`, `python tests/test_rank.py` and `python tests/test_autostart.py` (simulated, no client needed).
+- Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py`, `python tests/test_rank.py`, `python tests/test_update.py` and `python tests/test_autostart.py` (simulated, no client needed).
 - If you miss champ select you dodge (queue lockout, SP loss), so only accept when you'll be back in time.
 
 ## Versions

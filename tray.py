@@ -3,9 +3,10 @@
 import webbrowser
 
 
-def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_info, on_quit):
+def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_info, on_quit, update_now=None):
     """Build the tray icon. Call .run() on the main thread; .stop() removes it.
-    startup_on() -> bool, startup_toggle(), update_info() -> {"version", "url"} or None."""
+    startup_on() -> bool, startup_toggle(), update_info() -> {"version", "url", "state", "progress"} or None,
+    update_now() starts the one-click update (None: just open the release page)."""
     import pystray
     from PIL import Image
 
@@ -15,9 +16,23 @@ def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_
     def open_setup(icon, item):
         webbrowser.open(local_url + "/setup")
 
-    def open_update(icon, item):
+    def update_text(item):
+        info = update_info() or {}
+        if info.get("state") == "downloading":
+            return f"Downloading v{info.get('version')}… {info.get('progress', 0)}%"
+        if info.get("state") == "installing":
+            return f"Installing v{info.get('version')}…"
+        if info.get("state") == "error":
+            return f"Update failed - click to retry (v{info.get('version')})"
+        return f"Update now to v{info.get('version', '')}" if update_now else f"Update available: v{info.get('version', '')}"
+
+    def do_update(icon, item):
         info = update_info()
-        if info:
+        if not info:
+            return
+        if update_now:
+            update_now()
+        else:
             webbrowser.open(info["url"])
 
     def toggle_startup(icon, item):
@@ -32,8 +47,7 @@ def make_icon(icon_path, local_url, version, startup_on, startup_toggle, update_
     menu = pystray.Menu(
         pystray.MenuItem("Open League Remote", open_page, default=True),  # also on double-click
         pystray.MenuItem("Phone setup (QR codes)", open_setup),
-        pystray.MenuItem(lambda item: f"Update available: v{(update_info() or {}).get('version', '')}",
-                         open_update, visible=lambda item: bool(update_info())),
+        pystray.MenuItem(update_text, do_update, visible=lambda item: bool(update_info())),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Start with Windows", toggle_startup, checked=lambda item: startup_on()),
         pystray.MenuItem(f"League Remote v{version}", None, enabled=False),
