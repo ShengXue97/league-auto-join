@@ -45,7 +45,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -1436,9 +1436,11 @@ def main():
         log("League client not found yet - will keep checking...")
 
     threading.Thread(target=watcher.run, daemon=True).start()
-    if first_run and "--background" not in args:
+    # first start, or right after installing (the installer passes --show-setup)
+    show_setup = (first_run or "--show-setup" in args) and "--background" not in args
+    if show_setup:
         import webbrowser
-        webbrowser.open(local_url + "/setup")  # show the phone setup QR codes the first time
+        webbrowser.open(local_url + "/setup")  # the phone setup QR codes
 
     if hidden and "--no-tray" not in args:
         import tray
@@ -1449,7 +1451,16 @@ def main():
                 autostart.install_startup()
         TRAY = tray.make_icon(ICON_PATH, local_url, __version__, autostart.startup_installed, toggle_startup,
                               lambda: watcher.updater.latest, quit_app)
-        TRAY.run()  # blocks until Quit
+        def tray_ready(icon):
+            icon.visible = True
+            if show_setup:  # tell people where League Remote lives now that it has no window
+                try:
+                    icon.notify("League Remote is running. Find the bell icon near the clock (click ^ if it's "
+                                "hidden) and right-click it to open the control page or phone setup.",
+                                "League Remote is ready")
+                except Exception:
+                    pass
+        TRAY.run(setup=tray_ready)  # blocks until Quit
         quit_app()
     else:
         try:

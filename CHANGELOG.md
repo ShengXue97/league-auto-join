@@ -3,6 +3,13 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.0.1] - 2026-09-26
+### Added
+- After installing, League Remote opens the phone setup page automatically and
+  shows a Windows notification pointing to its bell icon in the notification area.
+- The installer's last screen and the setup page explain where League Remote
+  lives (the tray bell, the ^ arrow, the Start menu entry).
+
 ## [2.0.0] - 2026-09-26
 ### Added
 - Windows app: `LeagueRemote.exe` (no Python needed) and an installer

@@ -76,6 +76,8 @@ def render(cfg, control_url, version):
   .stores a {{ display:inline-block; margin:4px 10px 0 0; }}
   footer {{ margin-top:28px; color:var(--muted); font-size:12px; line-height:1.5; }}
   #testmsg {{ margin-top:8px; }}
+  .tray {{ display:flex; gap:16px; align-items:flex-start; margin-top:16px; }}
+  .tray img {{ width:56px; height:56px; flex:none; }}
   .warn {{ border-color:#f0b232; margin-bottom:16px; }}
   .warn h2 {{ color:#f0b232; }}
   ol {{ margin:10px 0; padding-left:22px; line-height:1.7; }}
@@ -109,6 +111,17 @@ def render(cfg, control_url, version):
     <p><code>{e(control_url)}</code></p>
     <div class="muted">If it doesn't load: make sure the phone is on the same Wi-Fi, and allow League Remote for
       <b>Private networks</b> if Windows Firewall asks.</div>
+  </div>
+</div>
+<div class="card tray">
+  <img src="/assets/icon.png" alt="">
+  <div>
+    <h2>Where's League Remote on my PC?</h2>
+    <div class="muted" style="color:var(--text)">It has no window: it runs in the <b>notification area</b> next to the clock,
+      as this <b>gold bell</b>. Right-click it to open the control page, this setup page, turn <b>Start with Windows</b>
+      on or off, or quit.</div>
+    <div class="muted" style="margin-top:6px">Don't see it? Click the <b>^</b> arrow next to the clock. Drag the bell onto the
+      taskbar to keep it visible. You can also start it again from the Start menu: <b>League Remote</b>.</div>
   </div>
 </div>
 <footer>

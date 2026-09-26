@@ -51,12 +51,15 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""League Remote"" dir=in action=allow program=""{app}\LeagueRemote.exe"" enable=yes profile=private"; Flags: runhidden; Tasks: not publicnet
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""League Remote"" dir=in action=allow program=""{app}\LeagueRemote.exe"" enable=yes profile=private,public"; Flags: runhidden; Tasks: publicnet
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--install-startup"; Flags: runhidden runasoriginaluser; Tasks: startup
-Filename: "{app}\LeagueRemote.exe"; Description: "Start League Remote now"; Flags: postinstall nowait skipifsilent runasoriginaluser
+Filename: "{app}\LeagueRemote.exe"; Parameters: "--show-setup"; Description: "Start League Remote and set up my phone"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--stop"; Flags: runhidden; RunOnceId: "StopApp"
 Filename: "{app}\LeagueRemote.exe"; Parameters: "--uninstall-startup"; Flags: runhidden; RunOnceId: "RemoveStartup"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""League Remote"""; Flags: runhidden; RunOnceId: "RemoveFirewallRule"
+
+[Messages]
+FinishedLabel=League Remote is installed.%n%nIt runs in the notification area: look for the gold bell icon near the clock (click the ^ arrow if you don't see it). Right-click it any time to open the control page or the phone setup.%n%nThe phone setup page opens in your browser when you click Finish.
 
 [Code]
 // Stop a running League Remote before replacing its files (updates).
