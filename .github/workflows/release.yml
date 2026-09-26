@@ -1,0 +1,53 @@
+# Pushing a version tag (v1.2.3) builds the installer on GitHub and publishes the
+# release as github-actions[bot], so no personal account appears on the release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt "pyinstaller>=6"
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Check the tag matches the app version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path league_remote.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match __version__ $v" }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          Get-ChildItem tests\test_*.py | ForEach-Object {
+            python $_.FullName
+            if ($LASTEXITCODE) { throw "$($_.Name) failed" }
+          }
+
+      - name: Build
+        run: python build.py
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          python tools/release_notes.py $v | Out-File -Encoding utf8 notes.md
+          gh release create "${{ github.ref_name }}" "dist/LeagueRemote-Setup-$v.exe" --title "League Remote $v" --notes-file notes.md --latest

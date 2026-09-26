@@ -1320,7 +1320,7 @@ def make_handler(cfg, lcu, watcher):
                     return self._json(200, {**watcher.snapshot(), "check": {"result": result, "message": message}})
                 elif url.path == "/api/update":
                     if not FROZEN:
-                        return self._json(409, {"error": "Running from source: download the new version from GitHub"})
+                        return self._json(409, {"error": "Running from source: update with git pull"})
                     if not watcher.updater.update_now(log):
                         return self._json(409, {"error": watcher.updater.message or "An update is already running"})
                     watcher.event("Updating League Remote - approve the Windows prompt on your PC")

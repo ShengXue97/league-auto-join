@@ -35,6 +35,7 @@ class FakeGitHub(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api":
             body = json.dumps({"tag_name": STATE["tag"], "html_url": "https://example/release",
+                               "body": "Intro\n\n## New in 9.9.9\n- **Bold** thing\n- See [docs](https://x)\n\n## Install\n1. Run it",
                                "assets": [{"name": "notes.txt"},
                                           {"name": f"LeagueRemote-Setup-{STATE['tag'][1:]}.exe",
                                            "browser_download_url": f"http://127.0.0.1:{PORT}/installer",
@@ -80,6 +81,7 @@ check(found["sha256"] == STATE["sha"] and found["size"] == STATE["size"], "reads
 check(len(seen) == 1, "notifies once")
 u.check()
 check(len(seen) == 1, "no repeat notification for the same version")
+check(found["notes"] == ["Bold thing", "See docs"] and "url" not in found, "shows what's new without a GitHub link")
 check(update.UpdateChecker("9.9.9", api_url=API).check() is None, "no update when already on the latest")
 check(update.UpdateChecker("10.0.0", api_url=API).check() is None, "no 'update' to an older version")
 

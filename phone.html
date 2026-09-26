@@ -172,6 +172,8 @@
   .callout .body { min-width: 0; flex: 1; }
   .callout .t { font-weight: 600; }
   .callout .d { color: var(--text-2); font-size: 13.5px; margin-top: 2px; }
+  .callout ul.notes { color: var(--text-2); font-size: 13.5px; margin: 6px 0 0; padding-left: 18px; }
+  .callout ul.notes li + li { margin-top: 3px; }
   .callout.gold { background: linear-gradient(0deg, var(--gold-soft), var(--gold-soft)), var(--surface); border-color: rgba(217, 181, 108, .25); }
   .callout.gold .ico { background: var(--gold-soft); color: var(--gold); }
   .callout.accent { background: linear-gradient(0deg, var(--accent-soft), var(--accent-soft)), var(--surface); border-color: rgba(44, 207, 189, .3); }
@@ -1010,10 +1012,11 @@ function renderUpdate(s) {
     u.state === "downloading" ? `<div class="t">Downloading v${v}… ${+u.progress}%</div><div class="bar" style="margin-top:10px"><i style="width:${+u.progress}%"></i></div>`
     : u.state === "installing" ? `<div class="t">Installing v${v}…</div><div class="d">Approve the Windows prompt on your PC. League Remote restarts by itself.</div>`
     : `<div class="t">Version ${v} is available</div>
-       <div class="d">${u.state === "error" ? esc(u.message) : `<a href="${esc(u.url)}" target="_blank" rel="noopener">See what's new</a>`}</div>
+       ${u.state === "error" ? `<div class="d">${esc(u.message)}</div>`
+         : (u.notes || []).length ? `<ul class="notes">${u.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
        <div class="actions">${s.can_self_update
          ? `<button class="btn primary sm" id="updateNow">${u.state === "error" ? "Try again" : "Update now"}</button>`
-         : `<a class="btn primary sm" href="${esc(u.url)}" target="_blank" rel="noopener">Download</a>`}</div>`) + `</div>`;
+         : `<span class="d">Running from source: update with git pull</span>`}</div>`) + `</div>`;
 }
 
 /* ================================================================== stats */

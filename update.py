@@ -15,7 +15,6 @@ import time
 import urllib.request
 
 REPO = "league-remote-team/league-remote"
-RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 CHECK_EVERY = 6 * 3600
 INSTALLER = re.compile(r"^LeagueRemote-Setup-[\d.]+\.exe$", re.I)
@@ -32,6 +31,19 @@ def _get_json(url, current):
                                                "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.loads(r.read())
+
+
+def release_notes(body, limit=5):
+    """The bullet points under "## New in ..." of a release body, as plain text."""
+    notes, section = [], False
+    for line in (body or "").splitlines():
+        if line.startswith("## "):
+            section = line[3:].lower().startswith("new in")
+            continue
+        if section and re.match(r"\s*[-*] ", line):
+            text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line.strip()[2:])  # [text](link) -> text
+            notes.append(re.sub(r"[*_`]", "", text).strip())
+    return notes[:limit]
 
 
 def run_elevated(path, args):
@@ -62,7 +74,7 @@ class UpdateChecker:
         digest = (asset or {}).get("digest") or ""
         found = {
             "version": tag.lstrip("vV"),
-            "url": data.get("html_url") or RELEASES_URL,
+            "notes": release_notes(data.get("body")),
             "installer": (asset or {}).get("browser_download_url"),
             "size": (asset or {}).get("size"),
             "sha256": digest.split(":", 1)[1].lower() if digest.lower().startswith("sha256:") else None,

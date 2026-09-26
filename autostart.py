@@ -108,6 +108,16 @@ def is_league_remote(pid):
     return pid and pid != os.getpid() and ("league_remote.py" in cmd or "leagueremote.exe" in cmd)
 
 
+def answers_as_league_remote(port):
+    """Ask whatever listens on the port. Needed when its command line can't be read,
+    e.g. a copy started with admin rights by the installer."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as r:  # the control page
+            return b"<title>League Remote" in r.read(8192)
+    except Exception:
+        return False
+
+
 def read_pid(pid_file):
     try:
         with open(pid_file, encoding="utf-8") as f:
@@ -134,7 +144,7 @@ def takeover(port, pid_file, log=print):
         targets.add(pid)
     if port_in_use(port):
         owner = port_owner(port)
-        if owner and is_league_remote(owner):
+        if owner and owner != os.getpid() and (is_league_remote(owner) or answers_as_league_remote(port)):
             targets.add(owner)
         elif owner:
             return (f"Port {port} is used by another program (PID {owner}). "

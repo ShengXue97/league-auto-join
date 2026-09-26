@@ -10,6 +10,11 @@ The running version is shown in the startup window and at the bottom of the phon
   8.24 client via CommunityDragon). Wood = Bronze, Legend = Challenger, and Salt
   uses the old grey shield.
 - Champion portraits next to your favorites in "My champions".
+### Changed
+- The update card lists what's new in the next version instead of linking to GitHub.
+### Fixed
+- Opening League Remote while a copy started by the installer (with admin rights)
+  was running said "Port 5000 is used by another program" instead of replacing it.
 
 ## [2.2.0] - 2026-09-26
 ### Changed
