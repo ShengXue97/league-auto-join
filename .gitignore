@@ -25,3 +25,6 @@ league_remote.log.old
 # Build output
 build/
 dist/
+
+# Local-only files (e.g. backup of the original git history)
+private/
