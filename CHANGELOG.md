@@ -3,6 +3,14 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.3.0] - 2026-09-26
+### Added
+- Rank emblems on the Stats rank card and next to your rank on the Live tab, one
+  per division: the classic pre-2019 League emblems (Riot artwork from the patch
+  8.24 client via CommunityDragon). Wood = Bronze, Legend = Challenger, and Salt
+  uses the old grey shield.
+- Champion portraits next to your favorites in "My champions".
+
 ## [2.2.0] - 2026-09-26
 ### Changed
 - Redesigned the whole app: a consistent design system (Inter font, calm dark

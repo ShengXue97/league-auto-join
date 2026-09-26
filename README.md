@@ -132,6 +132,9 @@ See `CHANGELOG.md` for what changed. Releases are tagged in git (`git tag` lists
 To release: bump `__version__` in `league_remote.py`, add a `CHANGELOG.md` entry,
 commit, then `git tag -a vX.Y.Z -m "..."`.
 
+Rank emblems in `assets/emblems/` are Riot Games artwork (the pre-2019 League emblems, from the
+patch 8.24 client files archived by CommunityDragon), used under Riot's policy for free fan projects.
+
 ---
 League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of
 Riot Games or anyone officially involved in producing or managing Riot Games properties.

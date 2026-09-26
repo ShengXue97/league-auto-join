@@ -287,7 +287,8 @@
 
   /* =================================================================== stats */
   .rank-hero { display: flex; align-items: center; gap: 16px; }
-  .emblem { width: 72px; height: 72px; flex: none; }
+  .emblem { width: 84px; height: 84px; flex: none; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .emblem.xs { width: 22px; height: 22px; filter: none; margin: -3px 0; }
   .rank-name { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--gold); line-height: 1.1; }
   .rank-meta { font-size: 13.5px; color: var(--text-2); margin-top: 3px; }
   .sp-row { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
@@ -655,6 +656,7 @@ async function loadChamps() {
     const r = await fetch("/api/champs", { cache: "no-store" });
     if (!r.ok) return;
     for (const c of await r.json()) champs[c.id] = c.name;
+    renderFavList();
     $("champNames").innerHTML = [...new Set(Object.values(champs))].sort()
       .map(n => `<option value="${esc(n)}">`).join("");
   } catch (e) { /* retried later */ }
@@ -967,7 +969,7 @@ function render(s) {
     setHero(s.phase in HERO ? s.phase : "None", s.phase === "Lobby" ? "Ready to queue" : "All set",
       "Queue up in League. League Remote alerts your phone when a match is found.");
   }
-  $("rankLine").textContent = s.rank_line || "";
+  $("rankLine").innerHTML = s.rank_line ? emblemImg(s.rank_line.split(" ")[0], s.rank_line.split(" ")[1], "emblem xs") + `<span>${esc(s.rank_line)}</span>` : "";
   show("rankLine", !!s.rank_line && !inGame && !inCs);
   tick();
 
@@ -1043,16 +1045,12 @@ function spark(values, goal) {
   <div class="row between" style="font-size:12.5px"><span class="faint">Dashed line: your goal (${csGoal})</span><span class="muted">Latest <b class="tnum">${+values[values.length - 1]}</b></span></div>`;
 }
 
-// Rank emblem: a gold hexagon with the division (original artwork, not Riot's)
-function emblemSvg(rk) {
-  const legend = rk.emblem === "Legend";
-  const label = legend ? "L" : (rk.division || "");
-  return `<svg class="emblem" viewBox="0 0 72 72" role="img" aria-label="${esc(rk.emblem)} ${esc(rk.division || "")}">
-    <defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1d58f"/><stop offset="1" stop-color="#a8823d"/></linearGradient></defs>
-    <polygon points="36,3 65,19.5 65,52.5 36,69 7,52.5 7,19.5" fill="#1a1508" stroke="url(#eg)" stroke-width="3"/>
-    <polygon points="36,12 57,24 57,48 36,60 15,48 15,24" fill="none" stroke="#d9b56c" stroke-opacity=".35" stroke-width="1.5"/>
-    <text x="36" y="44" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="${label.length > 2 ? 17 : 21}" font-weight="800" fill="url(#eg)">${esc(label)}</text>
-  </svg>`;
+// Rank emblem image ("Diamond", "IV" -> diamond-iv.png). Salt and Legend have one image each.
+const DIV_EMBLEMS = ["wood", "silver", "gold", "platinum", "diamond"];
+function emblemImg(name, division, cls = "emblem") {
+  const n = String(name || "").toLowerCase(), d = String(division || "").toLowerCase();
+  const file = DIV_EMBLEMS.includes(n) && /^(i|ii|iii|iv)$/.test(d) ? `${n}-${d}` : ["salt", "legend"].includes(n) ? n : "";
+  return file ? `<img class="${cls}" src="/assets/emblems/${file}.png" alt="${esc(name)} ${esc(division || "")}">` : "";
 }
 
 let wrChoice = null;   // what-if win rate picked on the page (null = default)
@@ -1063,7 +1061,7 @@ function renderRank(r, ladder) {
   ["rankCard", "climbCard", "scenCard", "spHistCard"].forEach(id => show(id, !!r));
   if (!r) return;
   const rk = r.rank;
-  $("emblem").innerHTML = emblemSvg(rk);
+  $("emblem").innerHTML = emblemImg(rk.emblem, rk.division);
   $("rankName").textContent = rk.emblem + (rk.division ? " " + rk.division : "");
   const sub = [`${r.season.wins}W ${r.season.losses}L · ${r.season.wr}%`];
   if (ladder && ladder.position) sub.push(`#${ladder.position} of ${ladder.size} in your league`);
@@ -1306,14 +1304,20 @@ $("star").onclick = e => {
   call("POST", `/api/favorites?op=${d.op}&kind=${d.kind}&name=${encodeURIComponent(champName(selected))}`);
 };
 
+// Champion id for a name (League Classic's 600xx ids win over the modern ones)
+function champIdByName(name) {
+  const ids = Object.keys(champs).filter(id => champs[id].toLowerCase() === String(name).toLowerCase()).map(Number);
+  return ids.length ? Math.max(...ids) : 0;
+}
+
 function renderFavList() {
   const list = favorites.pick;
-  const key = list.join(",");
+  const key = list.join(",") + "|" + Object.keys(champs).length;
   if ($("favlist").dataset.key === key) return;
   $("favlist").dataset.key = key;
   $("favlist").innerHTML = list.length ? list.map((n, i) => `
     <div class="favrow">
-      <span class="rank">${i + 1}</span><span class="grow">${esc(n)}</span>
+      <span class="rank">${i + 1}</span>${icon(champIdByName(n), "avatar sm")}<span class="grow">${esc(n)}</span>
       ${i ? `<button class="btn ghost sm icon-only" data-up="${esc(n)}" aria-label="Move ${esc(n)} up">${svg("up")}</button>` : ""}
       <button class="btn ghost sm icon-only" data-rm="${esc(n)}" aria-label="Remove ${esc(n)}">${svg("x")}</button>
     </div>`).join("") : `<p class="note" style="margin:0">None yet. Add your mains below.</p>`;

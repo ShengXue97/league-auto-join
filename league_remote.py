@@ -26,6 +26,7 @@ Opening League Remote while another copy runs replaces that copy (restart).
 
 import base64
 import json
+import re
 import os
 import secrets
 import socket
@@ -45,7 +46,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -1252,6 +1253,14 @@ def make_handler(cfg, lcu, watcher):
             elif url.path == "/assets/icon.png":
                 with open(ICON_PATH, "rb") as f:
                     self._send(f.read(), "image/png", cache=86400)
+            elif url.path.startswith("/assets/emblems/"):  # rank emblems (Riot artwork, see README)
+                name = url.path.rsplit("/", 1)[-1]
+                path = os.path.join(HERE, "assets", "emblems", name)
+                if re.fullmatch(r"[a-z]+(-[iv]+)?\.png", name) and os.path.isfile(path):
+                    with open(path, "rb") as f:
+                        self._send(f.read(), "image/png", cache=86400)
+                else:
+                    self._json(404, {"error": "no such emblem"})
             elif url.path == "/api/champs":
                 try:
                     self._json(200, [{"id": i, "name": n} for i, n in watcher.champions().items()])
