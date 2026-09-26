@@ -13,6 +13,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["LEAGUE_REMOTE_DATA"] = tempfile.mkdtemp()  # never touch your real data
 import ingame
 import league_remote as lr
 

@@ -1,22 +1,31 @@
-# League Remote Accept
+# League Remote
 
-Get a phone notification with **ACCEPT / DECLINE** buttons when your League match pops.
+<img src="assets/icon.png" width="96" align="right" alt="">
 
-## Setup (once)
-1. Install the **ntfy** app on your phone (Play Store / App Store).
-2. In the app, tap **+** and subscribe to the topic printed at startup (`ntfy_topic` in `config.json`).
-3. Double-click `start.bat`. When Windows Firewall asks, allow **Private networks**.
-4. Optional: open the printed "Phone control page" link on your phone and add it to your home screen.
+Your League of Legends queue, champ select and game on your phone. Get an alert with
+**ACCEPT / DECLINE** when your match pops, pick and ban from your phone, see a live
+second screen while you play, and track your League Classic rank.
 
-Check the setup: `python league_remote.py --test` sends a fake MATCH FOUND notification.
+## Install (Windows)
+1. Download **LeagueRemote-Setup-x.y.z.exe** from the
+   [latest release](https://github.com/league-remote-team/league-remote/releases/latest).
+2. Run it. Windows may say *"Windows protected your PC"* because the app isn't
+   code-signed: click **More info -> Run anyway**.
+3. League Remote starts in the **system tray** (next to the clock) and opens the
+   **phone setup** page with two QR codes:
+   - install the free **ntfy** app and scan the first code to get your alerts,
+   - scan the second code to open the control page (then *Add to Home Screen*).
+4. Your phone must be on the same Wi-Fi as your PC. If the setup page says your Wi-Fi
+   is set to **Public**, switch it to **Private** in Windows Settings (steps are shown).
+
+Right-click the tray icon for the control page, phone setup, *Start with Windows* and Quit.
+Updates: the tray and the control page tell you when a new version is out.
+Uninstall from *Settings -> Apps* like any other app.
 
 ## Start with Windows
-League Remote can start hidden when you log in (toggle "Start with Windows" on the
-phone page, or `python league_remote.py --install-startup`). It waits for the League
-client, so SP tracking never misses a game. Its output goes to `league_remote.log`.
-
-**Restarting:** just open League Remote again (`start.bat`). The new copy replaces
-the running one, hidden or not. `stop.bat` stops it.
+League Remote can start in the background when you log in (installer checkbox, the tray
+menu, or the toggle on the control page). It waits for the League client, so SP
+tracking never misses a game. Opening League Remote again restarts it.
 
 ## Notifications
 | When | Notification |
@@ -90,18 +99,28 @@ Works on phone, tablet and desktop browsers.
 - Shows nothing you can't already see in game: no enemy cooldown, ultimate,
   summoner spell, jungle or respawn timers, no enemy gold estimates.
   `tests/test_ingame.py` checks this.
-- Never acts on its own: accepting, picking, banning, swapping and reconnecting are
-  always your own tap. Riot's Terms of Service (7.1) forbid "automation programs",
-  and Riot support names "taking actions on your behalf" - so there is no auto-accept.
+- Only acts when you tap: accepting, picking, banning, swapping and reconnecting are
+  your own taps. The one exception is the optional **auto-accept** toggle (off by
+  default): Riot's Terms of Service (7.1) forbid "automation programs" and Riot support
+  names "taking actions on your behalf", so turning it on is a small risk you choose.
 - Never shows teammates' names in champ select (Riot hides them in ranked champ
   select to prevent dodging; apps must not reveal them) - teammates show as roles.
-- Not registered with Riot as an app. Riot's developer policy asks apps using the
-  League client API to register; tools like this are widely used without bans, but
-  that can't be guaranteed.
+- Riot's developer policy asks apps using the League client API to register them with
+  Riot. Tools like this are widely used without bans, but that can't be guaranteed.
 
 ## Notes
 - Your phone must be on the same Wi-Fi as the PC for the buttons to work.
-- `config.json` settings: `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
+- Your data lives in `%APPDATA%\LeagueRemote` (settings, SP history, log).
+- `config.json` settings: `auto_accept`, `notify_champ_select`, `notify_your_turn`, `notify_requeue`, `favorite_picks`, `favorite_bans`, `notify_game`, `cs_goal`, `port`.
+- Rank, SP and Aegis features cover the League Classic queue; alerts, champ select and
+  the in-game screen work in any mode.
+
+## Developers
+- Run from source: `pip install pystray pillow segno`, then `start.bat` (console) or
+  `python league_remote.py`. `stop.bat` stops it.
+- Build the app and installer: `pip install pyinstaller`, install
+  [Inno Setup 6](https://jrsoftware.org/isinfo.php), then `python build.py`
+  (output in `dist/`). The icon is drawn by `tools/make_icon.py`.
 - Tests: `python tests/test_champ_select.py`, `python tests/test_ingame.py`, `python tests/test_rank.py` and `python tests/test_autostart.py` (simulated, no client needed).
 - If you miss champ select you dodge (queue lockout, SP loss), so only accept when you'll be back in time.
 
@@ -111,3 +130,9 @@ See `CHANGELOG.md` for what changed. Releases are tagged in git (`git tag` lists
 
 To release: bump `__version__` in `league_remote.py`, add a `CHANGELOG.md` entry,
 commit, then `git tag -a vX.Y.Z -m "..."`.
+
+---
+League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of
+Riot Games or anyone officially involved in producing or managing Riot Games properties.
+Riot Games, and all associated properties are trademarks or registered trademarks of
+Riot Games, Inc.

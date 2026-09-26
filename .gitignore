@@ -21,3 +21,7 @@ history_cache.json
 league_remote.pid
 league_remote.log
 league_remote.log.old
+
+# Build output
+build/
+dist/

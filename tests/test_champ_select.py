@@ -12,6 +12,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["LEAGUE_REMOTE_DATA"] = __import__("tempfile").mkdtemp()  # never touch your real data
 import league_remote as lr
 
 ME = 2
@@ -27,6 +28,8 @@ class FakeLCU:
 
     def __init__(self):
         self.calls = []
+        self.lock_via_patch = True     # PATCH {"championId", "completed": true} locks in
+        self.lock_via_complete = True  # POST /actions/{id}/complete locks in
         # my team picks in cell order 0..4, I'm cell 2
         self.actions = [
             [{"id": 10, "actorCellId": ME, "type": "ban", "championId": 0, "completed": False, "isInProgress": True},
@@ -73,8 +76,10 @@ class FakeLCU:
             for a in self.all_actions():
                 if a["id"] == aid:
                     a["championId"] = body["championId"]
+                    if body.get("completed") and self.lock_via_patch:  # how the real client locks in
+                        a["completed"], a["isInProgress"] = True, False
             return None
-        if method == "POST" and path.endswith("/complete"):
+        if method == "POST" and path.endswith("/complete") and self.lock_via_complete:
             aid = int(path.split("/")[-2])
             for a in self.all_actions():
                 if a["id"] == aid:
@@ -84,6 +89,9 @@ class FakeLCU:
 
     def raw(self, path):
         return b"\x89PNG fake", "image/png"
+
+    def accept(self):
+        self.calls.append(("POST", "/lol-matchmaking/v1/ready-check/accept", None))
 
     def start_my_pick(self):
         for a in self.all_actions():
@@ -162,7 +170,9 @@ code, _ = req("POST", "/api/cs/hover?kind=pick&champ=60080")
 check(code == 200 and lcu.calls[-1] == ("PATCH", "/lol-champ-select/v1/session/actions/22", {"championId": 60080}),
       "kind=pick hovers my PICK even during my ban turn")
 code, _ = req("POST", "/api/cs/lock?champ=60001")
-check(code == 200 and lcu.calls[-1] == ("POST", "/lol-champ-select/v1/session/actions/10/complete", None), "ban Annie")
+check(code == 200 and lcu.calls[-1] == ("PATCH", "/lol-champ-select/v1/session/actions/10",
+                                        {"championId": 60001, "completed": True}) and lcu.actions[0][0]["completed"],
+      "ban Annie (locked in one step, like the client)")
 
 lcu.start_my_pick()
 w.tick()
@@ -318,12 +328,34 @@ blob = json.dumps(w.snapshot())
 check(not any(f"P{c}" in blob for c in range(5)), "SAFETY: teammate names never reach the page in champ select")
 check([p["name"] for p in w.snapshot()["cs"]["team"]] == ["Top", "Jungle", "Mid", "Bot", "Support"],
       "teammates shown by role")
-cfg, lcu, w, sent = make({"auto_accept": True})  # old config from an earlier version
+cfg, lcu, w, sent = make()
 w.on_phase_change("Matchmaking", "ReadyCheck", {})
 check(not any("ready-check/accept" in c[1] for c in lcu.calls) and sent[-1][0] == "MATCH FOUND!",
-      "SAFETY: never accepts on its own, even with an old auto_accept config")
+      "SAFETY: auto-accept is off by default - you get ACCEPT/DECLINE")
+cfg, lcu, w, sent = make({"auto_accept": True})  # you switched it on
+w.on_phase_change("Matchmaking", "ReadyCheck", {})
+check(any("ready-check/accept" in c[1] for c in lcu.calls) and sent[-1][0] == "Match accepted automatically",
+      "auto-accept on: accepts and tells you")
 
-# ------------------------------------------------------------ 8. not your turn
+# ------------------------------------------------------------ 8. lock-in really locks (verified)
+for label, via_patch, via_complete in (("one-step PATCH", True, False), ("fallback /complete", False, True)):
+    cfg, lcu, w, sent = make()
+    lcu.lock_via_patch, lcu.lock_via_complete = via_patch, via_complete
+    w.cs_act(60001, lock=True)
+    ban = lcu.actions[0][0]
+    check(ban["completed"] and ban["championId"] == 60001, f"lock-in works when the client locks via {label}")
+cfg, lcu, w, sent = make()
+lcu.lock_via_patch = lcu.lock_via_complete = False  # client ignores both
+t0 = __import__("time").time()
+try:
+    w.cs_act(60001, lock=True)
+    check(False, "lock-in that didn't happen is reported")
+except ValueError as e:
+    check("didn't lock it in" in str(e) and not lcu.actions[0][0]["completed"],
+          "lock-in that didn't happen is reported, never shown as locked")
+check(__import__("time").time() - t0 < 5, "gives up within a few seconds")
+
+# ------------------------------------------------------------ 9. not your turn
 cfg, lcu, w, sent = make()
 lcu.actions[0][0]["isInProgress"] = False
 try:

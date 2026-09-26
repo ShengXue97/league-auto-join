@@ -1,0 +1,128 @@
+"""The /setup page: QR codes to connect a phone in under a minute."""
+
+import html
+import urllib.parse
+
+import segno
+
+PLAY_STORE = "https://play.google.com/store/apps/details?id=io.heckel.ntfy"
+APP_STORE = "https://apps.apple.com/us/app/ntfy/id1625396347"
+RIOT_NOTICE = ("League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games "
+               "or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all "
+               "associated properties are trademarks or registered trademarks of Riot Games, Inc.")
+
+
+def qr(data):
+    return segno.make(data, error="m").svg_inline(scale=5, dark="#010a13", light="#f0e6d2", border=3)
+
+
+def public_networks():
+    """Names of connected networks Windows treats as Public (the phone often can't connect then)."""
+    try:
+        import autostart
+        out = autostart.powershell("Get-NetConnectionProfile | Where-Object NetworkCategory -eq 'Public' "
+                                   "| ForEach-Object { $_.Name }")
+        return [n for n in out.splitlines() if n.strip()]
+    except Exception:
+        return []
+
+
+def network_warning(names):
+    if not names:
+        return ""
+    e = html.escape
+    return f"""<div class="card warn">
+    <h2>⚠ Your Wi-Fi is set to "Public"</h2>
+    <div>Windows treats <b>{e(", ".join(names))}</b> as a public network, so your phone probably can't reach League Remote.
+    If this is your home Wi-Fi, set it to <b>Private</b>:</div>
+    <ol><li>Open <b>Settings → Network &amp; internet → Wi-Fi</b></li>
+      <li>Click <b>{e(names[0])}</b> (or <b>Properties</b>)</li>
+      <li>Under <b>Network profile type</b>, choose <b>Private network</b></li></ol>
+    <div class="muted">Only do this for your own home network, never for café or school Wi-Fi.</div>
+  </div>"""
+
+
+def render(cfg, control_url, version):
+    server = cfg["ntfy_server"].rstrip("/")
+    host = server.split("://", 1)[-1]
+    topic = cfg["ntfy_topic"]
+    # Android ntfy app: this link opens the app and subscribes (docs.ntfy.sh "deep linking")
+    subscribe = f"ntfy://{host}/{urllib.parse.quote(topic)}?display={urllib.parse.quote('League Remote')}"
+    e = html.escape
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League Remote setup</title>
+<link rel="icon" href="/assets/icon.png">
+<style>
+  :root {{ --bg:#010a13; --panel:#0a1428; --gold:#c8aa6e; --gold-dim:#785a28; --text:#f0e6d2; --muted:#a09b8c; --blue:#0ac8b9; }}
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px 16px 40px; }}
+  .wrap {{ max-width:980px; margin:0 auto; }}
+  header {{ display:flex; align-items:center; gap:16px; margin-bottom:22px; }}
+  header img {{ width:64px; height:64px; }}
+  h1 {{ margin:0; font-size:26px; color:var(--gold); }}
+  .muted {{ color:var(--muted); font-size:14px; }}
+  .steps {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }}
+  .card {{ background:var(--panel); border:1px solid var(--gold-dim); border-radius:12px; padding:18px; }}
+  .n {{ display:inline-grid; place-items:center; width:28px; height:28px; border-radius:50%; background:var(--gold); color:var(--bg); font-weight:800; margin-right:8px; }}
+  h2 {{ font-size:18px; margin:0 0 10px; display:flex; align-items:center; }}
+  .qr {{ display:flex; justify-content:center; margin:14px 0 8px; }}
+  .qr svg {{ border-radius:8px; max-width:100%; height:auto; }}
+  code {{ background:#1e2328; padding:3px 7px; border-radius:5px; color:var(--gold); word-break:break-all; font-size:15px; }}
+  a {{ color:var(--blue); }}
+  .btn {{ display:inline-block; margin-top:8px; padding:12px 16px; border-radius:8px; border:2px solid var(--blue); background:#0ac8b922;
+          color:var(--text); font:inherit; font-weight:700; cursor:pointer; text-decoration:none; }}
+  .stores a {{ display:inline-block; margin:4px 10px 0 0; }}
+  footer {{ margin-top:28px; color:var(--muted); font-size:12px; line-height:1.5; }}
+  #testmsg {{ margin-top:8px; }}
+  .warn {{ border-color:#f0b232; margin-bottom:16px; }}
+  .warn h2 {{ color:#f0b232; }}
+  ol {{ margin:10px 0; padding-left:22px; line-height:1.7; }}
+</style></head>
+<body><div class="wrap">
+<header>
+  <img src="/assets/icon.png" alt="">
+  <div><h1>Set up your phone</h1><div class="muted">League Remote v{e(version)} is running on this PC. Your phone must be on the same Wi-Fi.</div></div>
+</header>
+{network_warning(public_networks())}
+<div class="steps">
+  <div class="card">
+    <h2><span class="n">1</span>Get the ntfy app</h2>
+    <div class="muted">Free app that shows League Remote's alerts (match found, your turn, game over).</div>
+    <div class="stores"><a href="{PLAY_STORE}" target="_blank" rel="noopener">Google Play</a><a href="{APP_STORE}" target="_blank" rel="noopener">App Store</a></div>
+  </div>
+  <div class="card">
+    <h2><span class="n">2</span>Subscribe to your alerts</h2>
+    <div class="qr">{qr(subscribe)}</div>
+    <div class="muted"><b>Android:</b> scan with the camera, it opens ntfy and subscribes.<br>
+      <b>iPhone:</b> open ntfy, tap <b>+</b> and enter this topic:</div>
+    <p><code>{e(topic)}</code></p>
+    <div class="muted">Keep the topic private: anyone who knows it can see your alerts.</div>
+    <button class="btn" id="test">Send a test alert</button>
+    <div class="muted" id="testmsg"></div>
+  </div>
+  <div class="card">
+    <h2><span class="n">3</span>Open the control page</h2>
+    <div class="qr">{qr(control_url)}</div>
+    <div class="muted">Scan with your phone camera, then use <b>Add to Home Screen</b> so it opens like an app.</div>
+    <p><code>{e(control_url)}</code></p>
+    <div class="muted">If it doesn't load: make sure the phone is on the same Wi-Fi, and allow League Remote for
+      <b>Private networks</b> if Windows Firewall asks.</div>
+  </div>
+</div>
+<footer>
+  League Remote only reads data the League client and game already show you, and only acts when you tap a button.
+  It never reads game memory or sends keyboard/mouse input.<br><br>{e(RIOT_NOTICE)}
+</footer>
+</div>
+<script>
+document.getElementById("test").onclick = async () => {{
+  const m = document.getElementById("testmsg");
+  try {{
+    const r = await fetch("/api/test-notification", {{ method: "POST" }});
+    m.textContent = r.ok ? "Sent! It should arrive on your phone within a few seconds." : "Couldn't send it.";
+  }} catch (e) {{ m.textContent = "Couldn't reach League Remote."; }}
+}};
+</script>
+</body></html>"""

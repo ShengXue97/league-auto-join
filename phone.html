@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#010a13">
 <title>League Remote</title>
+<link rel="icon" href="/assets/icon.png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+<meta name="apple-mobile-web-app-title" content="League Remote">
 <style>
   :root {
     --bg: #010a13; --panel: #0a1428; --panel2: #1e2328; --gold: #c8aa6e; --gold-dim: #785a28;
@@ -195,6 +198,19 @@
   .sprow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #ffffff10; font-size: 14px; }
   .sprow:first-child { border-top: 0; }
 
+  /* ---------- toast, update banner, footer ---------- */
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, calc(100% + 40px)); z-index: 20;
+    visibility: hidden; transition: transform .2s, visibility 0s .2s;
+    max-width: min(92vw, 520px); padding: 14px 18px; border-radius: 10px; font-weight: 700; font-size: 16px;
+    background: #0acb6e; color: #010a13; box-shadow: 0 8px 30px #0008; text-align: center; }
+  .toast.show { transform: translate(-50%, 0); visibility: visible; transition: transform .2s; }
+  .toast.bad { background: var(--red); color: #fff; }
+  .update { border-color: var(--blue); }
+  .update a { color: var(--blue); font-weight: 700; }
+  .warn { color: var(--amber); }
+  .legal { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+  .legal a { color: var(--muted); }
+
   /* ---------- aegis ---------- */
   .aegis { border-color: var(--gold); background: linear-gradient(135deg, #c8aa6e22, var(--panel) 60%); }
   .aegis b.t { color: var(--gold); font-size: 17px; }
@@ -303,6 +319,17 @@
 
     <!-- settings: only shown outside champ select and games -->
     <div class="col" id="settings">
+    <div class="card update" id="updateCard" hidden></div>
+    <div class="card">
+      <div class="row">
+        <div>
+          <div><b>Auto-accept</b></div>
+          <div class="hint">Accept "Match found" automatically and just notify you.</div>
+          <div class="hint warn">Riot's rules treat this as automation, so there's a small ban risk. Off = you tap Accept.</div>
+        </div>
+        <button class="toggle" id="auto" aria-label="Toggle auto-accept"></button>
+      </div>
+    </div>
     <div class="card">
       <div class="row">
         <div>
@@ -324,9 +351,13 @@
     </div>
     </div>
     <div class="log" id="log"></div>
-    <div class="log" id="version"></div>
+    <div class="log"><span id="version"></span> · <a href="/setup" style="color:var(--muted)">Phone setup</a></div>
+    <div class="legal">League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or
+      anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties
+      are trademarks or registered trademarks of Riot Games, Inc.</div>
   </div>
 </main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- ============================== STATS ============================== -->
 <main class="layout" id="page-stats" hidden>
@@ -656,6 +687,10 @@ function render(s) {
   $("dot").classList.toggle("ok", !!s.connected);
   $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
   $("startup").classList.toggle("on", !!s.startup);
+  $("auto").classList.toggle("on", !!s.auto_accept);
+  show("updateCard", !!s.update);
+  if (s.update) $("updateCard").innerHTML =
+    `<b>League Remote v${esc(s.update.version)} is available.</b> <a href="${esc(s.update.url)}" target="_blank" rel="noopener">Download</a>`;
   $("log").textContent = s.last_event || "";
   if (s.version) $("version").textContent = `v${s.version}`;
   if (s.cs_goal) csGoal = s.cs_goal;
@@ -895,15 +930,31 @@ document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.datase
 window.addEventListener("hashchange", () => setTab(location.hash.slice(1)));
 
 /* ============================== actions ============================== */
+// Big, impossible-to-miss message at the bottom (errors in red)
+function toast(text, bad) {
+  const t = $("toast");
+  t.textContent = text;
+  t.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = "toast"; }, bad ? 6000 : 3000);
+}
+
 async function call(method, path) {
   try {
     const r = await fetch(path, { method, cache: "no-store" });
     const data = await r.json();
-    if (!r.ok) { $("log").textContent = data.error || `Error ${r.status}`; return; }
+    if (!r.ok) {
+      $("log").textContent = data.error || `Error ${r.status}`;
+      if (method === "POST") toast(data.error || `Error ${r.status}`, true);
+      return false;
+    }
     render(data);
+    return true;
   } catch (e) {
     $("dot").classList.remove("ok");
     $("log").textContent = "Can't reach PC — same Wi-Fi?";
+    if (method === "POST") toast("Can't reach your PC — is your phone on the same Wi-Fi?", true);
+    return false;
   }
 }
 
@@ -911,6 +962,7 @@ $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("reconnect").onclick = () => call("POST", "/api/reconnect");
 $("startup").onclick = () => call("POST", "/api/startup");
+$("auto").onclick = () => call("POST", "/api/auto");
 $("grid").onclick = e => {
   const b = e.target.closest(".champ");
   if (!b) return;
@@ -919,7 +971,14 @@ $("grid").onclick = e => {
   call("POST", `/api/cs/hover?champ=${selected}`); // shows your choice to teammates
 };
 $("search").oninput = () => lastCs && renderGrid(lastCs);
-$("lock").onclick = () => call("POST", `/api/cs/lock?champ=${selected}`);
+$("lock").onclick = async () => {
+  const isBan = lastCs && lastCs.action && lastCs.action.type === "ban";
+  const name = champName(selected);
+  $("lock").disabled = true;
+  $("lock").textContent = isBan ? "BANNING…" : "LOCKING IN…";
+  if (await call("POST", `/api/cs/lock?champ=${selected}`)) toast(`✔ ${isBan ? "Banned" : "Locked in"} ${name}`);
+  else if (lastCs) renderChampSelect(lastCs);  // put the button back so you can retry
+};
 $("favs").onclick = e => {
   const b = e.target.closest(".fav-chip");
   if (!b || b.disabled) return;

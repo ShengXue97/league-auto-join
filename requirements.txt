@@ -1,0 +1,4 @@
+pystray>=0.19
+pillow>=10
+segno>=1.5
+# building the app: pyinstaller>=6 and Inno Setup 6

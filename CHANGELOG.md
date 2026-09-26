@@ -3,6 +3,33 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.0.0] - 2026-09-26
+### Added
+- Windows app: `LeagueRemote.exe` (no Python needed) and an installer
+  (`LeagueRemote-Setup-x.y.z.exe`) with Start Menu entry, optional Start with
+  Windows / desktop shortcut, uninstaller, and a firewall rule for the phone
+  (Private networks; Public is an opt-in checkbox).
+- League Remote icon (original artwork) for the app, tray, installer and page.
+- System tray icon: open the control page, phone setup, Start with Windows, Quit.
+- Phone setup page (`/setup`) with QR codes to subscribe to ntfy (Android opens
+  the app directly) and to open the control page, a test-alert button, and a
+  warning with steps when Windows treats your Wi-Fi as Public.
+- Update check against GitHub releases (tray notification + banner on the page).
+- Riot Games "not endorsed" notice on the page, setup page and README.
+
+### Fixed
+- LOCK IN from the phone could silently do nothing. Lock-in now uses the same
+  one-step update as the client, falls back to the separate /complete call, and
+  verifies the pick really locked; if not, a clear red message says so. The
+  page updates right after the tap and shows a confirmation.
+
+### Changed
+- Auto-accept is back as an optional toggle, off by default, with a warning that
+  Riot's rules treat it as automation.
+- Your data now lives in `%APPDATA%\LeagueRemote` (copied there automatically
+  from the project folder when running from source).
+- The raw client-data recorder only runs from source (not in the app).
+
 ## [1.7.3] - 2026-09-25
 ### Added
 - A game League Remote saw end is fetched from Riot by its id and shown in Stats

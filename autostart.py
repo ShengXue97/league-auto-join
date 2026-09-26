@@ -41,14 +41,25 @@ def startup_installed():
     return os.path.exists(SHORTCUT)
 
 
-def install_startup(script):
+def launch_command(script=None):
+    """(program, arguments, folder) that start League Remote hidden."""
+    if getattr(sys, "frozen", False):  # packaged LeagueRemote.exe (has no console anyway)
+        exe = sys.executable
+        return exe, "--background", os.path.dirname(exe)
+    script = os.path.abspath(script or os.path.join(os.path.dirname(os.path.abspath(__file__)), "league_remote.py"))
+    return pythonw(), f'"{script}" --background', os.path.dirname(script)
+
+
+def install_startup(script=None):
     q = lambda s: s.replace("'", "''")  # PowerShell single-quote escaping
-    script = os.path.abspath(script)
+    target, arguments, folder = launch_command(script)
+    icon = target if getattr(sys, "frozen", False) else os.path.join(folder, "assets", "icon.ico")
     powershell(
         f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{q(SHORTCUT)}'); "
-        f"$s.TargetPath = '{q(pythonw())}'; "
-        f"$s.Arguments = '\"{q(script)}\" --background'; "
-        f"$s.WorkingDirectory = '{q(os.path.dirname(script))}'; "
+        f"$s.TargetPath = '{q(target)}'; "
+        f"$s.Arguments = '{q(arguments)}'; "
+        f"$s.WorkingDirectory = '{q(folder)}'; "
+        f"$s.IconLocation = '{q(icon)}'; "
         f"$s.Description = 'League Remote - match alerts for League of Legends'; "
         f"$s.Save()")
     return startup_installed()
@@ -93,7 +104,8 @@ def port_owner(port):
 
 
 def is_league_remote(pid):
-    return pid and pid != os.getpid() and "league_remote.py" in (command_line(pid) or "").lower()
+    cmd = (command_line(pid) or "").lower()
+    return pid and pid != os.getpid() and ("league_remote.py" in cmd or "leagueremote.exe" in cmd)
 
 
 def read_pid(pid_file):

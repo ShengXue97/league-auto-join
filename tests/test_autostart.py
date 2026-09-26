@@ -29,8 +29,10 @@ def check(cond, msg):
 
 def make_copy():
     d = tempfile.mkdtemp(prefix="lr-test-")
-    for f in ("league_remote.py", "ingame.py", "rank.py", "autostart.py", "phone.html"):
+    for f in ("league_remote.py", "ingame.py", "rank.py", "autostart.py", "phone.html", "setup_page.py",
+              "update.py", "tray.py"):
         shutil.copy(os.path.join(REPO, f), d)
+    shutil.copytree(os.path.join(REPO, "assets"), os.path.join(d, "assets"))
     with open(os.path.join(d, "config.json"), "w") as f:
         json.dump({"port": PORT, "auto_accept": False, "ntfy_server": "http://127.0.0.1:9", "ntfy_topic": "test",
                    "notify_champ_select": False, "notify_requeue": False, "notify_your_turn": False,
@@ -40,7 +42,9 @@ def make_copy():
 
 def start(d, *args):
     log = open(os.path.join(d, f"out-{time.time_ns()}.txt"), "w")
-    p = subprocess.Popen([sys.executable, os.path.join(d, "league_remote.py"), *args], cwd=d,
+    # temp data folder (not your real data), and never connect to your real League client
+    env = {**os.environ, "LEAGUE_REMOTE_DATA": d, "LEAGUE_REMOTE_NO_CLIENT": "1"}
+    p = subprocess.Popen([sys.executable, os.path.join(d, "league_remote.py"), *args], cwd=d, env=env,
                          stdout=log, stderr=subprocess.STDOUT, creationflags=autostart.NO_WINDOW)
     p.log_path = log.name
     return p

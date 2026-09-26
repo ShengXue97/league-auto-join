@@ -1,13 +1,14 @@
 """
-League Remote Accept
---------------------
-Safety rule: League Remote never acts on its own. It only reads, and every action
-(accept, pick, ban, swap, reconnect) is a button you press. Riot's Terms of Service
-forbid automation that takes actions on your behalf, so there is no auto-accept.
+League Remote
+-------------
+Safety rule: League Remote only reads, and every action (accept, pick, ban, swap,
+reconnect) is a button you press. The one exception is the optional auto-accept
+toggle (off by default): Riot's Terms of Service treat actions taken on your behalf
+as automation, so turning it on is your own, small, risk.
 
 Watches the League client for "Match Found", pushes a notification to your
 phone (via ntfy.sh) with ACCEPT / DECLINE buttons, and serves a small phone
-control page on your home Wi-Fi. Optional auto-accept toggle.
+control page on your home Wi-Fi.
 
 Champion select: pick and ban from your phone. Nothing is ever picked or
 banned automatically - every choice and lock-in is your own tap.
@@ -15,7 +16,7 @@ banned automatically - every choice and lock-in is your own tap.
 In game: read-only second-screen stats and a personal match history
 (see ingame.py for exactly what is and isn't read).
 
-Standard library only. Run:  python league_remote.py
+Run from source:  python league_remote.py   (or the installed LeagueRemote.exe)
   --background          run hidden, log to league_remote.log (used by Start with Windows)
   --install-startup     start League Remote hidden when you log in to Windows
   --uninstall-startup   stop starting with Windows
@@ -41,16 +42,28 @@ from urllib.parse import parse_qs, urlparse
 import autostart
 import ingame
 import rank
+import setup_page
+import update
 
-__version__ = "1.7.3"
+__version__ = "2.0.0"
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(HERE, "config.json")
+APP_NAME = "League Remote"
+FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
+# Program files (the page, icons): next to this script, or inside the packaged app
+HERE = sys._MEIPASS if FROZEN else os.path.dirname(os.path.abspath(__file__))
+# Your data (settings, SP history...): one place per Windows user, kept across updates.
+# LEAGUE_REMOTE_DATA overrides it (tests use a temporary folder).
+DATA_DIR = os.environ.get("LEAGUE_REMOTE_DATA") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~"), "LeagueRemote")
+CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 PAGE_PATH = os.path.join(HERE, "phone.html")
-RANK_PATH = os.path.join(HERE, "rank_history.jsonl")
-HISTORY_CACHE_PATH = os.path.join(HERE, "history_cache.json")
-PID_PATH = os.path.join(HERE, "league_remote.pid")
-LOG_PATH = os.path.join(HERE, "league_remote.log")
+ICON_PATH = os.path.join(HERE, "assets", "icon.png")
+RANK_PATH = os.path.join(DATA_DIR, "rank_history.jsonl")
+HISTORY_CACHE_PATH = os.path.join(DATA_DIR, "history_cache.json")
+PID_PATH = os.path.join(DATA_DIR, "league_remote.pid")
+LOG_PATH = os.path.join(DATA_DIR, "league_remote.log")
+# files that used to live next to league_remote.py (moved to DATA_DIR on first start)
+OLD_DATA_FILES = ["config.json", "rank_history.jsonl", "rank_history.jsonl.last", "history_cache.json"]
 CLASSIC_QUEUE = 4310  # League Classic 5v5 (Summoner's Journey)
 
 DEFAULT_LOCKFILES = [
@@ -69,11 +82,42 @@ def log(msg):
     print(time.strftime("[%H:%M:%S] ") + msg, flush=True)
 
 
-CAPTURE_DIR = os.path.join(HERE, "capture")
+def migrate_old_data():
+    """Before 2.0 your data lived next to league_remote.py. Copy it once (never overwrite)."""
+    if FROZEN or os.environ.get("LEAGUE_REMOTE_DATA"):
+        return
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    import shutil
+    moved = []
+    for name in OLD_DATA_FILES:
+        src, dst = os.path.join(src_dir, name), os.path.join(DATA_DIR, name)
+        if os.path.exists(src) and not os.path.exists(dst):
+            os.makedirs(DATA_DIR, exist_ok=True)
+            shutil.copy2(src, dst)
+            moved.append(name)
+    if moved:
+        log(f"Copied your data ({', '.join(moved)}) to {DATA_DIR}")
+
+
+def message_box(text, title=APP_NAME):
+    """Show a message even when there's no console (packaged app / hidden start)."""
+    print(text, flush=True)
+    if FROZEN or sys.stdout is None or "--background" in sys.argv:
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, text, title, 0x40)
+        except Exception:
+            pass
+
+
+CAPTURE_DIR = os.path.join(DATA_DIR, "capture")
+CAPTURE = not FROZEN  # raw client data recorder: on when running from source (for development)
 
 
 def capture(name, data):
     """Save raw client data so we can study unfamiliar modes (e.g. JADE champ select)."""
+    if not CAPTURE:
+        return
     try:
         os.makedirs(CAPTURE_DIR, exist_ok=True)
         path = os.path.join(CAPTURE_DIR, time.strftime("%Y%m%d-%H%M%S-") + name + ".json")
@@ -95,6 +139,7 @@ def load_config():
         "ntfy_topic": "league-" + secrets.token_hex(5),
         "ntfy_server": "https://ntfy.sh",
         "port": 5000,
+        "auto_accept": False,  # optional, off by default - see the safety note at the top
         "notify_champ_select": True,
         "notify_requeue": True,
         "notify_your_turn": True,
@@ -115,6 +160,7 @@ def load_config():
 
 
 def save_config(cfg):
+    os.makedirs(DATA_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
@@ -163,6 +209,9 @@ class LCU:
             return None
 
     def connect(self):
+        if os.environ.get("LEAGUE_REMOTE_NO_CLIENT"):  # tests: never talk to a real League client
+            self.base = None
+            return False
         creds = self._credentials()
         if not creds:
             self.base = None
@@ -362,6 +411,8 @@ class Watcher:
         s["version"] = __version__
         s["cs_goal"] = self.cfg.get("cs_goal", 7.0)
         s["startup"] = autostart.startup_installed()
+        s["auto_accept"] = bool(self.cfg.get("auto_accept"))
+        s["update"] = self.updater.latest if getattr(self, "updater", None) else None
         e = self.rank_entry
         s["rank_line"] = f"{rank.describe(e['pos'])['text']} · {e['wins']}W {e['losses']}L" if e else None
         s["favorites"] = {"pick": list(self.cfg.get("favorite_picks", [])),
@@ -694,14 +745,50 @@ class Watcher:
         if champ_id not in (choices or []):
             raise ValueError("That champion isn't available")
         path = f"/lol-champ-select/v1/session/actions/{act['id']}"
-        self.lcu.request("PATCH", path, {"championId": champ_id})
         name = self.champions().get(champ_id, champ_id)
         is_ban = act.get("type") == "ban"
-        if lock:
-            self.lcu.request("POST", path + "/complete")
-            self.event(f"{'Banned' if is_ban else 'Locked in'} {name} from phone")
-        else:
+        if not lock:
+            self.lcu.request("PATCH", path, {"championId": champ_id})
             self.event(f"Hovering {name}")
+            return
+        # Lock in the way the client itself does it (champion + completed in one update),
+        # then make sure it really locked: fall back to the separate /complete call.
+        attempts = [lambda: self.lcu.request("PATCH", path, {"championId": champ_id, "completed": True}),
+                    lambda: (self.lcu.request("PATCH", path, {"championId": champ_id}),
+                             self.lcu.request("POST", path + "/complete"))]
+        errors = []
+        for attempt in attempts:
+            try:
+                attempt()
+            except urllib.error.HTTPError as e:
+                errors.append(e.code)
+            if self.action_completed(act["id"]):
+                self.event(f"{'Banned' if is_ban else 'Locked in'} {name} from phone")
+                return
+        self.event(f"Lock-in of {name} didn't go through (client answered {errors or 'OK'})")
+        raise ValueError("The League client didn't lock it in - lock in on your PC")
+
+    def refresh_cs(self):
+        """Update champ select in the status right away (after a tap from the phone)."""
+        try:
+            cs = self.champ_select_state()
+        except Exception:
+            return
+        with self.lock:
+            if self.status.get("phase") == "ChampSelect":
+                self.status = {**self.status, "cs": cs, "cs_phase": cs.get("phase"), "cs_time_left": cs.get("time_left")}
+
+    def action_completed(self, action_id, wait=1.5):
+        """Re-read champ select until the action shows as completed (or give up)."""
+        end = time.time() + wait
+        while True:
+            s = self.lcu.request("GET", "/lol-champ-select/v1/session") or {}
+            for a in (a for g in s.get("actions") or [] for a in g):
+                if a.get("id") == action_id and a.get("completed"):
+                    return True
+            if time.time() >= end:
+                return False
+            time.sleep(0.25)
 
     def cs_swap(self, op, swap_id=None):
         """Pick order swaps: op = request | accept | decline | cancel | up (request earliest)."""
@@ -1041,6 +1128,15 @@ class Watcher:
 
     def on_phase_change(self, old, new, st):
         if new == "ReadyCheck":
+            if self.cfg.get("auto_accept"):  # only when you switched it on
+                try:
+                    self.lcu.accept()
+                    self.event("Match found - accepted automatically (auto-accept is on)")
+                    self.notifier.send("Match accepted automatically", "Champ select is coming - head back!",
+                                       priority=5, tags=["white_check_mark", "video_game"])
+                    return
+                except urllib.error.HTTPError:
+                    pass  # couldn't accept: fall back to asking you
             self.event("Match found - waiting for your answer")
             self.notifier.match_found()
         elif old == "ReadyCheck" and new == "Matchmaking":
@@ -1098,6 +1194,14 @@ def make_handler(cfg, lcu, watcher):
             self.end_headers()
             self.wfile.write(body)
 
+        def _send(self, body, ctype, cache=0):
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", f"max-age={cache}" if cache else "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def _icon(self, cid, item=False):
             if not cid.isdigit():
                 return self._json(404, {"error": "bad id"})
@@ -1133,6 +1237,12 @@ def make_handler(cfg, lcu, watcher):
                 self.wfile.write(body)
             elif url.path == "/api/status":
                 self._json(200, watcher.snapshot())
+            elif url.path == "/setup":
+                self._send(setup_page.render(cfg, watcher.notifier.control_url, __version__).encode(),
+                           "text/html; charset=utf-8")
+            elif url.path == "/assets/icon.png":
+                with open(ICON_PATH, "rb") as f:
+                    self._send(f.read(), "image/png", cache=86400)
             elif url.path == "/api/champs":
                 try:
                     self._json(200, [{"id": i, "name": n} for i, n in watcher.champions().items()])
@@ -1176,18 +1286,27 @@ def make_handler(cfg, lcu, watcher):
                     except ValueError as e:
                         watcher.event(f"Phone: {e}")
                         return self._json(409, {"error": str(e)})
+                    watcher.refresh_cs()  # answer with the new champ select state, not last tick's
+                elif url.path == "/api/auto":
+                    on = q.get("on", [""])[0]
+                    cfg["auto_accept"] = (on == "1") if on else not cfg.get("auto_accept")
+                    save_config(cfg)
+                    watcher.event(f"Auto-accept {'ON' if cfg['auto_accept'] else 'OFF'}")
+                elif url.path == "/api/test-notification":
+                    watcher.notifier.match_found()
+                    watcher.event("Sent a test alert to your phone")
                 elif url.path == "/api/shutdown":
                     # a newer League Remote is taking over; only accepted from this PC
                     if self.client_address[0] not in ("127.0.0.1", "::1"):
                         return self._json(403, {"error": "only from this PC"})
                     log("A new League Remote was started - this one is stopping. You can close this window.")
                     self._json(200, {"ok": True})
-                    threading.Timer(0.3, lambda: os._exit(0)).start()
+                    threading.Timer(0.3, quit_app).start()
                     return
                 elif url.path == "/api/startup":
                     on = q.get("on", [""])[0]
                     want = (on == "1") if on else not autostart.startup_installed()
-                    ok = autostart.install_startup(os.path.abspath(__file__)) if want else autostart.uninstall_startup()
+                    ok = autostart.install_startup() if want else autostart.uninstall_startup()
                     watcher.event(f"Start with Windows {'ON' if autostart.startup_installed() else 'OFF'}")
                     if not ok:
                         return self._json(500, {"error": "couldn't change the Startup folder"})
@@ -1211,8 +1330,23 @@ def make_handler(cfg, lcu, watcher):
 
 # ---------------------------------------------------------------- main
 
+TRAY = None  # the tray icon while running as an app
+
+
+def quit_app():
+    """Stop League Remote (tray Quit, or a newer copy taking over)."""
+    if TRAY is not None:
+        try:
+            TRAY.visible = False
+            TRAY.stop()
+        except Exception:
+            pass
+    os._exit(0)
+
+
 def background_logging():
-    """pythonw has no console: send output to league_remote.log (kept under ~1 MB)."""
+    """No console (packaged app / hidden start): write output to league_remote.log (~1 MB max)."""
+    os.makedirs(DATA_DIR, exist_ok=True)
     try:
         if os.path.getsize(LOG_PATH) > 1_000_000:
             os.replace(LOG_PATH, LOG_PATH + ".old")
@@ -1223,34 +1357,39 @@ def background_logging():
 
 
 def main():
+    global TRAY
     args = set(sys.argv[1:])
-    if "--background" in args or sys.stdout is None:
+    hidden = FROZEN or "--background" in args or sys.stdout is None
+    if hidden:
         background_logging()
+    migrate_old_data()
 
     if "--install-startup" in args:
-        ok = autostart.install_startup(os.path.abspath(__file__))
-        print("League Remote will start hidden when you log in to Windows." if ok else "Couldn't add it to Startup.")
+        ok = autostart.install_startup()
+        log("League Remote will start when you log in to Windows." if ok else "Couldn't add it to Startup.")
         return
     if "--uninstall-startup" in args:
         autostart.uninstall_startup()
-        print("League Remote will no longer start with Windows.")
+        log("League Remote will no longer start with Windows.")
         return
 
+    first_run = not os.path.exists(CONFIG_PATH)
     cfg = load_config()
     ip = lan_ip()
     control_url = f"http://{ip}:{cfg['port']}"
+    local_url = f"http://localhost:{cfg['port']}"
 
     # Only one League Remote at a time: a new one replaces the running one (= restart).
     problem = autostart.takeover(cfg["port"], PID_PATH, log)
     if problem:
-        print(problem)
+        message_box(problem)
         return
     if "--stop" in args:
         try:
             os.remove(PID_PATH)
         except OSError:
             pass
-        print("League Remote stopped.")
+        log("League Remote stopped.")
         return
 
     lcu = LCU(cfg.get("lockfile", ""))
@@ -1262,33 +1401,62 @@ def main():
     try:
         server = ThreadingHTTPServer(("0.0.0.0", cfg["port"]), make_handler(cfg, lcu, watcher))
     except OSError:
-        print(f"Port {cfg['port']} is already in use by another program. Change \"port\" in config.json.")
+        message_box(f"Port {cfg['port']} is already used by another program.\n"
+                    f"Change \"port\" in {CONFIG_PATH} and start League Remote again.")
         return
     threading.Thread(target=server.serve_forever, daemon=True).start()
     autostart.write_pid(PID_PATH)
 
+    def on_update(info):
+        log(f"League Remote v{info['version']} is available: {info['url']}")
+        if TRAY is not None:
+            try:
+                TRAY.notify(f"Version {info['version']} is available. Right-click the tray icon to download it.",
+                            "League Remote update")
+            except Exception:
+                pass
+    watcher.updater = update.UpdateChecker(__version__, on_update)
+    watcher.updater.start()
+
     print("=" * 64)
-    print(f" League Remote Accept v{__version__} is running")
+    print(f" League Remote v{__version__} is running")
     print("=" * 64)
     print(f" Phone control page : {control_url}")
+    print(f" Phone setup (QR)   : {local_url}/setup")
     print(f" ntfy topic         : {cfg['ntfy_topic']}")
-    print(f"   -> install the 'ntfy' app on your phone and subscribe to it")
-    print(f" Start with Windows : {'ON' if autostart.startup_installed() else 'OFF'}"
-          f"{'  (running hidden, log: league_remote.log)' if '--background' in args else ''}")
-    print(" Phone must be on the same Wi-Fi as this PC. Ctrl+C to quit.")
-    print("=" * 64)
+    print(f" Your data          : {DATA_DIR}")
+    print(f" Start with Windows : {'ON' if autostart.startup_installed() else 'OFF'}")
+    print(" Phone must be on the same Wi-Fi as this PC." + ("" if hidden else " Ctrl+C to quit."))
+    print("=" * 64, flush=True)
 
-    if "--test" in sys.argv:
+    if "--test" in args:
         log("Sending a test MATCH FOUND notification to your phone...")
         notifier.match_found()
-
     if not lcu.connect():
         log("League client not found yet - will keep checking...")
 
-    try:
-        watcher.run()
-    except KeyboardInterrupt:
-        print("\nBye!")
+    threading.Thread(target=watcher.run, daemon=True).start()
+    if first_run and "--background" not in args:
+        import webbrowser
+        webbrowser.open(local_url + "/setup")  # show the phone setup QR codes the first time
+
+    if hidden and "--no-tray" not in args:
+        import tray
+        def toggle_startup():
+            if autostart.startup_installed():
+                autostart.uninstall_startup()
+            else:
+                autostart.install_startup()
+        TRAY = tray.make_icon(ICON_PATH, local_url, __version__, autostart.startup_installed, toggle_startup,
+                              lambda: watcher.updater.latest, quit_app)
+        TRAY.run()  # blocks until Quit
+        quit_app()
+    else:
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nBye!")
 
 
 if __name__ == "__main__":
