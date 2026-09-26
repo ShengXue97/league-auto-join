@@ -42,12 +42,65 @@ def network_warning(names):
   </div>"""
 
 
+def subscribe_links(cfg):
+    server = cfg["ntfy_server"].rstrip("/")
+    host = server.split("://", 1)[-1]
+    topic = cfg["ntfy_topic"]
+    # ntfy app deep link (docs.ntfy.sh): opens the app and subscribes. Phone cameras often won't open
+    # custom links from a QR code, so the QR code opens /subscribe, where this is a tappable button.
+    deep = f"ntfy://{host}/{urllib.parse.quote(topic)}?display={urllib.parse.quote('League Remote')}"
+    return topic, deep, f"{server}/{urllib.parse.quote(topic)}"
+
+
+def render_subscribe(cfg):
+    """/subscribe - opened on the phone by scanning the QR code."""
+    topic, deep, web = subscribe_links(cfg)
+    e = html.escape
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subscribe to League Remote alerts</title>
+<link rel="icon" href="/assets/icon.png">
+<style>
+  body {{ margin:0; background:#010a13; color:#f0e6d2; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px 18px; }}
+  .wrap {{ max-width:460px; margin:0 auto; text-align:center; }}
+  img {{ width:72px; height:72px; }}
+  h1 {{ color:#c8aa6e; font-size:24px; margin:10px 0 6px; }}
+  p, li {{ color:#a09b8c; line-height:1.5; }}
+  .btn {{ display:block; margin:16px 0; padding:18px; border-radius:10px; border:2px solid #0ac8b9; background:#0ac8b922;
+          color:#f0e6d2; font-size:19px; font-weight:800; text-decoration:none; }}
+  .alt {{ border-color:#785a28; background:none; font-size:16px; font-weight:700; }}
+  code {{ display:inline-block; background:#1e2328; color:#c8aa6e; padding:6px 10px; border-radius:6px; font-size:17px; word-break:break-all; }}
+  ol {{ text-align:left; }}
+  a {{ color:#0ac8b9; }}
+</style></head><body><div class="wrap">
+<img src="/assets/icon.png" alt="">
+<h1>Get League Remote alerts</h1>
+<p>1. Install the free <b>ntfy</b> app:
+  <a href="{PLAY_STORE}">Google Play</a> · <a href="{APP_STORE}">App Store</a></p>
+<p>2. Then subscribe:</p>
+<a class="btn" href="{e(deep)}">Subscribe in ntfy</a>
+<p>Button didn't open ntfy? Add it by hand:</p>
+<ol><li>Open <b>ntfy</b> and tap <b>+</b></li>
+  <li>Enter this topic (leave the server as ntfy.sh):<br><code id="topic">{e(topic)}</code></li></ol>
+<button class="btn alt" id="copy">Copy topic</button>
+<p style="font-size:13px">Keep the topic private: anyone who knows it can see your alerts.</p>
+</div>
+<script>
+document.getElementById("copy").onclick = async (ev) => {{
+  const t = document.getElementById("topic").textContent;
+  try {{ await navigator.clipboard.writeText(t); ev.target.textContent = "Copied!"; }}
+  catch (e) {{ getSelection().selectAllChildren(document.getElementById("topic")); ev.target.textContent = "Selected - copy it"; }}
+}};
+</script>
+</body></html>"""
+
+
 def render(cfg, control_url, version):
     server = cfg["ntfy_server"].rstrip("/")
     host = server.split("://", 1)[-1]
     topic = cfg["ntfy_topic"]
     # Android ntfy app: this link opens the app and subscribes (docs.ntfy.sh "deep linking")
-    subscribe = f"ntfy://{host}/{urllib.parse.quote(topic)}?display={urllib.parse.quote('League Remote')}"
     e = html.escape
     return f"""<!doctype html>
 <html lang="en"><head>
@@ -96,9 +149,9 @@ def render(cfg, control_url, version):
   </div>
   <div class="card">
     <h2><span class="n">2</span>Subscribe to your alerts</h2>
-    <div class="qr">{qr(subscribe)}</div>
-    <div class="muted"><b>Android:</b> scan with the camera, it opens ntfy and subscribes.<br>
-      <b>iPhone:</b> open ntfy, tap <b>+</b> and enter this topic:</div>
+    <div class="qr">{qr(control_url + "/subscribe")}</div>
+    <div class="muted">Scan with your phone camera: it opens a page with a <b>Subscribe in ntfy</b> button.<br>
+      Or open ntfy, tap <b>+</b> and enter this topic:</div>
     <p><code>{e(topic)}</code></p>
     <div class="muted">Keep the topic private: anyone who knows it can see your alerts.</div>
     <button class="btn" id="test">Send a test alert</button>

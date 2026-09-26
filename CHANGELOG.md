@@ -3,6 +3,15 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.0.2] - 2026-09-26
+### Fixed
+- The ntfy QR code on the setup page didn't work: phone cameras won't open ntfy://
+  links from a QR code. It now opens a League Remote page on your phone with a
+  "Subscribe in ntfy" button, a Copy topic button and app store links.
+
+### Changed
+- Update check, installer and README point to github.com/league-remote-team/league-remote.
+
 ## [2.0.1] - 2026-09-26
 ### Added
 - After installing, League Remote opens the phone setup page automatically and

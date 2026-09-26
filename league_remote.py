@@ -45,7 +45,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -1237,6 +1237,8 @@ def make_handler(cfg, lcu, watcher):
                 self.wfile.write(body)
             elif url.path == "/api/status":
                 self._json(200, watcher.snapshot())
+            elif url.path == "/subscribe":
+                self._send(setup_page.render_subscribe(cfg).encode(), "text/html; charset=utf-8")
             elif url.path == "/setup":
                 self._send(setup_page.render(cfg, watcher.notifier.control_url, __version__).encode(),
                            "text/html; charset=utf-8")
