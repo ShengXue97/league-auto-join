@@ -17,20 +17,24 @@ GOLD, GOLD_DARK, GOLD_LIGHT = (200, 170, 110), (120, 90, 40), (240, 230, 210)
 TEAL = (10, 200, 185)
 
 
-def draw():
+def draw(card=True):
+    """card=True: rounded card with a gold frame (app icon). False: full-bleed square (profile pictures)."""
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 
-    # background: rounded square with a subtle vertical gradient
+    # background: subtle vertical gradient
     bg = Image.new("RGBA", (S, S))
     g = ImageDraw.Draw(bg)
     for y in range(S):
         t = y / S
         g.line([(0, y), (S, y)], fill=tuple(int(NAVY2[i] * (1 - t) + NAVY[i] * t) for i in range(3)) + (255,))
-    mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([24, 24, S - 24, S - 24], radius=210, fill=255)
-    img.paste(bg, (0, 0), mask)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([24, 24, S - 24, S - 24], radius=210, outline=GOLD_DARK + (255,), width=18)
+    if card:
+        mask = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([24, 24, S - 24, S - 24], radius=210, fill=255)
+        img.paste(bg, (0, 0), mask)
+        d.rounded_rectangle([24, 24, S - 24, S - 24], radius=210, outline=GOLD_DARK + (255,), width=18)
+    else:
+        img.paste(bg, (0, 0))
 
     # teal signal arcs (the "remote" part), with a soft glow
     glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
@@ -72,7 +76,9 @@ def main():
     big.resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, "icon.png"))
     big.resize((256, 256), Image.LANCZOS).save(
         os.path.join(OUT, "icon.ico"), sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    print("wrote assets/icon.png and assets/icon.ico")
+    # square profile picture (GitHub organization avatar): full-bleed, no frame
+    draw(card=False).convert("RGB").resize((500, 500), Image.LANCZOS).save(os.path.join(OUT, "avatar.png"))
+    print("wrote assets/icon.png, assets/icon.ico and assets/avatar.png")
 
 
 if __name__ == "__main__":
