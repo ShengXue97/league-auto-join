@@ -3,6 +3,32 @@
 Versions follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 The running version is shown in the startup window and at the bottom of the phone page.
 
+## [2.2.0] - 2026-09-26
+### Changed
+- Redesigned the whole app: a consistent design system (Inter font, calm dark
+  surfaces with hairline borders, gold only for rank, teal for actions, a real
+  icon set, 48 px touch targets) instead of gold borders on everything.
+- Header shows the app, a clear connection state (Connected / Waiting for League /
+  Can't reach your PC) and Live/Stats tabs.
+- One focused status card per situation: queue timer with progress toward the
+  estimate, match found with a draining countdown and Accept/Decline (settings
+  hidden, phone vibrates on Android), champ select timer, game clock.
+- Champ select: pinned "Lock in" bar with your selected champion, compact
+  favorite chips, tidier team list and shorter Aegis note.
+- Stats: rank emblem, relative times ("2h ago"), no truncated rows, one-line
+  next-games table, area-filled CS trend.
+- Settings grouped into one list; version, updates, setup and legal notice in a
+  quiet footer. Setup and subscribe pages share the new design.
+
+### Added
+- "Add to Home Screen" support (web app manifest): opens full screen like an app.
+- Clear screens for "League isn't running" and "Can't reach your PC".
+- `tools/demo.py`: run the real UI with scripted situations for design work.
+
+### Fixed
+- After a game, the page no longer shows a "waiting for the game to load"
+  placeholder when there was no live data.
+
 ## [2.1.1] - 2026-09-26
 ### Added
 - "Check for updates" in the tray menu and on the control page (answers right

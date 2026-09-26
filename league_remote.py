@@ -45,7 +45,7 @@ import rank
 import setup_page
 import update
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 
 APP_NAME = "League Remote"
 FROZEN = getattr(sys, "frozen", False)  # running as the packaged LeagueRemote.exe
@@ -1238,6 +1238,12 @@ def make_handler(cfg, lcu, watcher):
                 self.wfile.write(body)
             elif url.path == "/api/status":
                 self._json(200, watcher.snapshot())
+            elif url.path == "/manifest.webmanifest":  # "Add to Home Screen" opens it like an app
+                self._send(json.dumps({
+                    "name": APP_NAME, "short_name": APP_NAME, "start_url": "/", "scope": "/", "display": "standalone",
+                    "background_color": "#0a0d13", "theme_color": "#0a0d13",
+                    "icons": [{"src": "/assets/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}],
+                }).encode(), "application/manifest+json")
             elif url.path == "/subscribe":
                 self._send(setup_page.render_subscribe(cfg).encode(), "text/html; charset=utf-8")
             elif url.path == "/setup":

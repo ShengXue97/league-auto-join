@@ -3,430 +3,600 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#010a13">
+<meta name="theme-color" content="#0a0d13">
 <title>League Remote</title>
 <link rel="icon" href="/assets/icon.png">
 <link rel="apple-touch-icon" href="/assets/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="League Remote">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+  /* =================================================================== design tokens */
   :root {
-    --bg: #010a13; --panel: #0a1428; --panel2: #1e2328; --gold: #c8aa6e; --gold-dim: #785a28;
-    --text: #f0e6d2; --muted: #a09b8c; --blue: #0ac8b9; --red: #e84057; --green: #0acb6e; --amber: #f0b232;
+    --bg: #0a0d13;
+    --surface: #11161f;
+    --surface-2: #171e2a;
+    --surface-3: #1f2837;
+    --line: rgba(255, 255, 255, .07);
+    --line-2: rgba(255, 255, 255, .12);
+    --text: #e8ecf2;
+    --text-2: #a3adbb;
+    --text-3: #6e7888;
+    --gold: #d9b56c;
+    --gold-soft: rgba(217, 181, 108, .14);
+    --accent: #2ccfbd;
+    --accent-ink: #052521;
+    --accent-soft: rgba(44, 207, 189, .13);
+    --good: #3ddc97;
+    --good-soft: rgba(61, 220, 151, .13);
+    --bad: #f26d6d;
+    --bad-soft: rgba(242, 109, 109, .13);
+    --warn: #f5b94a;
+    --warn-soft: rgba(245, 185, 74, .13);
+    --r-lg: 18px;
+    --r: 12px;
+    --r-sm: 9px;
+    --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px -18px rgba(0, 0, 0, .8);
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 0 16px 24px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
+    font: 15px/1.45 var(--font); font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+    padding: 0 16px calc(28px + env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
   }
   [hidden] { display: none !important; }
-  small { font-size: 12px; }
-
-  /* ---------- header + tabs ---------- */
-  header {
-    position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 0 10px;
-    display: flex; align-items: center; gap: 12px; max-width: 1200px; margin: 0 auto;
-  }
-  h1 { font-size: 14px; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; margin: 0; white-space: nowrap; }
-  .tabs { display: flex; gap: 6px; margin-left: auto; }
-  .tab { padding: 8px 16px; font-size: 14px; border: 1px solid var(--gold-dim); border-radius: 20px; background: none; color: var(--muted); letter-spacing: .06em; font-weight: 700; cursor: pointer; }
-  .tab.on { background: var(--gold); border-color: var(--gold); color: #010a13; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; }
-  .dot.ok { background: var(--green); }
-
-  /* ---------- responsive layout ---------- */
-  .layout { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-  @media (min-width: 760px) {
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-  }
-  @media (min-width: 1180px) {
-    .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 20px; }
-    body { padding-left: 24px; padding-right: 24px; }
-  }
-
-  .card { background: var(--panel); border: 1px solid var(--gold-dim); border-radius: 10px; padding: 16px; min-width: 0; }
-  .label { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 10px; }
-  .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .phase { font-size: 26px; font-weight: 700; text-align: center; }
-  .big { font-size: 44px; font-variant-numeric: tabular-nums; text-align: center; font-weight: 700; line-height: 1.15; }
-  .sub { color: var(--muted); text-align: center; font-size: 15px; margin-top: 4px; min-height: 1.2em; }
-  .log { color: var(--muted); font-size: 13px; text-align: center; min-height: 1.2em; }
-  .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-
-  button {
-    font: inherit; font-weight: 700; letter-spacing: .08em; border-radius: 8px; border: 2px solid;
-    padding: 20px 10px; font-size: 20px; cursor: pointer; color: var(--text); background: transparent;
-    touch-action: manipulation;
-  }
-  button:disabled { opacity: .3; cursor: default; }
-  .btns { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
-  #accept, .go-big { border-color: var(--blue); background: #0ac8b922; }
-  #decline { border-color: var(--red); background: #e8405718; font-size: 15px; }
-  .ready #accept:not(:disabled) { animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { background: #0ac8b966; } }
-  .small { padding: 8px 10px; font-size: 13px; letter-spacing: .04em; border-width: 1px; border-color: var(--gold-dim); border-radius: 6px; }
-  .small.go { border-color: var(--blue); background: #0ac8b922; }
-  .small.best { border-color: var(--gold); background: #c8aa6e33; }
-  .small.no { border-color: var(--red); }
-  .toggle { width: 64px; height: 36px; border-radius: 18px; border: 2px solid var(--gold-dim); position: relative; padding: 0; background: var(--panel2); flex: none; }
-  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--muted); transition: .15s; }
-  .toggle.on { background: #0acb6e33; border-color: var(--green); }
-  .toggle.on::after { left: 31px; background: var(--green); }
-
-  .icon { width: 36px; height: 36px; border-radius: 4px; background: var(--panel2); object-fit: cover; flex: none; display: inline-block; }
-  .icons { display: flex; flex-wrap: wrap; gap: 6px; }
-  .icons .icon { width: 30px; height: 30px; }
-  .icons .ban { filter: grayscale(1); opacity: .7; }
-  .items { display: flex; gap: 3px; flex-wrap: wrap; }
-  .items img, .items span { width: 22px; height: 22px; border-radius: 3px; background: var(--panel2); display: inline-block; }
-  .items.big img, .items.big span { width: 40px; height: 40px; border-radius: 5px; }
-
-  /* ---------- champ select ---------- */
-  .turn { text-align: center; font-weight: 700; font-size: 18px; padding: 12px; border-radius: 8px; background: var(--panel2); }
-  .turn.now { background: #0ac8b933; border: 2px solid var(--blue); animation: pulse 1s infinite; }
-  .turn.ban.now { background: #e8405733; border-color: var(--red); }
-  .team { display: flex; flex-direction: column; gap: 8px; }
-  .player { display: flex; align-items: center; gap: 10px; font-size: 15px; min-width: 0; }
-  .player > div { min-width: 0; }
-  .player.me { color: var(--gold); font-weight: 700; }
-  .player .st { color: var(--muted); font-size: 13px; }
-  .player .st.locked { color: var(--green); }
-  .ord { flex: none; width: 26px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
-  .player.me .ord { color: var(--gold); }
+  a { color: var(--accent); text-decoration: none; }
+  b, strong { font-weight: 600; }
+  .num, .tnum { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--text-2); }
+  .faint { color: var(--text-3); }
   .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  input[type=search], .addrow input {
-    width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 8px;
-    border: 1px solid var(--gold-dim); background: var(--bg); color: var(--text); min-width: 0;
+  svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2;
+          stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* =================================================================== header */
+  header {
+    position: sticky; top: 0; z-index: 10; margin: 0 -16px; padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    background: rgba(10, 13, 19, .82); backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px);
+    border-bottom: 1px solid var(--line);
   }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin-top: 12px; max-height: 46vh; overflow-y: auto; }
-  @media (min-width: 760px) { .grid { max-height: 60vh; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); } }
-  .champ { border: 2px solid transparent; border-radius: 6px; padding: 2px; background: none; text-align: center; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--text); }
-  .champ img { width: 100%; aspect-ratio: 1; border-radius: 4px; display: block; background: var(--panel2); }
-  .champ span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-  .champ.sel { border-color: var(--gold); }
-  .champ.fav span::before { content: "★ "; color: var(--gold); }
-  #lock { width: 100%; border-color: var(--blue); background: #0ac8b922; }
-  #lock.ban { border-color: var(--red); background: #e8405722; }
-  .empty { color: var(--muted); text-align: center; grid-column: 1 / -1; padding: 12px; }
-  .swapcard { border-color: var(--blue); }
-  .swapcard.worse { border-color: var(--red); }
-  .swapcard .btns { margin-top: 12px; }
-  .swapcard button { padding: 14px 8px; font-size: 16px; }
-  #swapUp { width: 100%; margin-top: 12px; }
-  .favs { display: flex; flex-wrap: wrap; gap: 8px; }
-  .fav-chip { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border-radius: 8px;
-    border: 1px solid var(--gold-dim); background: var(--panel2); font-size: 14px; font-weight: 400; letter-spacing: 0; text-align: left; }
-  .fav-chip .icon { width: 32px; height: 32px; }
-  .fav-chip small { display: block; color: var(--muted); font-size: 11px; }
-  .fav-chip.available { border-color: var(--green); }
-  .fav-chip.available small { color: var(--green); }
-  .fav-chip.mine { border-color: var(--gold); }
-  .fav-chip.mine small { color: var(--gold); }
+  .head { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+  .brand-name { font-weight: 700; font-size: 16px; letter-spacing: -.01em; line-height: 1.15; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+  .conn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+  .conn.ok::before { background: var(--good); box-shadow: 0 0 0 3px var(--good-soft); }
+  .conn.warn::before { background: var(--warn); }
+  .conn.bad::before { background: var(--bad); }
+  .seg { margin-left: auto; display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 3px; }
+  .seg button { border: 0; background: none; color: var(--text-2); font: 600 13.5px var(--font); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+  .seg button.on { background: var(--surface-3); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+
+  /* =================================================================== layout */
+  .layout { max-width: 1100px; margin: 16px auto 0; display: flex; flex-direction: column; gap: 14px; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  @media (min-width: 780px) {
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 18px; }
+  }
+  @media (min-width: 1140px) { .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+  .card.tight { padding: 14px 16px; }
+  .card-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-2); margin: 0 0 12px; }
+  .card-title .aside { margin-left: auto; font-weight: 500; color: var(--text-3); }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .between { justify-content: space-between; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .divider { height: 1px; background: var(--line); margin: 14px 0; }
+  .note { font-size: 13px; color: var(--text-3); line-height: 1.5; }
+
+  /* =================================================================== buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px;
+    border-radius: var(--r); border: 1px solid transparent; font: 600 15.5px var(--font); letter-spacing: -.005em;
+    cursor: pointer; color: var(--text); background: var(--surface-3); touch-action: manipulation;
+    transition: transform .08s, background .15s, opacity .15s; text-decoration: none;
+  }
+  .btn:active:not(:disabled) { transform: scale(.98); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.block { width: 100%; }
+  .btn.lg { min-height: 58px; font-size: 17px; border-radius: 14px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover:not(:disabled) { background: #3fe0cd; }
+  .btn.danger { background: var(--bad-soft); color: var(--bad); border-color: rgba(242,109,109,.25); }
+  .btn.ghost { background: transparent; border-color: var(--line-2); color: var(--text); }
+  .btn.gold { background: var(--gold); color: #1d1406; }
+  .btn.sm { min-height: 36px; padding: 0 12px; font-size: 13.5px; border-radius: var(--r-sm); }
+  .btn.icon-only { width: 36px; padding: 0; }
+  .link { background: none; border: 0; padding: 0; font: inherit; color: var(--text-2); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+
+  .switch { position: relative; width: 50px; height: 30px; border-radius: 99px; border: 0; background: var(--surface-3); flex: none; cursor: pointer; transition: background .2s; padding: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #cfd6e0; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(20px); background: #fff; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+  .pill.good { background: var(--good-soft); color: var(--good); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.gold { background: var(--gold-soft); color: var(--gold); }
+  .pill.accent { background: var(--accent-soft); color: var(--accent); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+
+  .bar { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width .9s linear; }
+  .bar.gold i { background: var(--gold); }
+  .bar.good i { background: var(--good); }
+  .bar.bad i { background: var(--bad); }
+
+  .avatar { width: 40px; height: 40px; border-radius: 10px; background: var(--surface-3); object-fit: cover; flex: none; display: inline-block; }
+  .avatar.sm { width: 30px; height: 30px; border-radius: 8px; }
+  .avatar.lg { width: 64px; height: 64px; border-radius: 14px; }
+  .avatar.gray { filter: grayscale(1); opacity: .55; }
+
+  /* =================================================================== hero (status) */
+  .hero { position: relative; overflow: hidden; padding: 20px 20px 18px; }
+  .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .9;
+    background: radial-gradient(120% 90% at 0% 0%, var(--hero-glow, transparent), transparent 60%); }
+  .hero > * { position: relative; }
+  .hero[data-tone="accent"] { --hero-glow: rgba(44, 207, 189, .16); border-color: rgba(44, 207, 189, .28); }
+  .hero[data-tone="gold"] { --hero-glow: rgba(217, 181, 108, .13); }
+  .hero[data-tone="bad"] { --hero-glow: rgba(242, 109, 109, .14); border-color: rgba(242, 109, 109, .25); }
+  .eyebrow { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .eyebrow .badge { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-3); color: var(--text); }
+  .hero[data-tone="accent"] .eyebrow .badge { background: var(--accent-soft); color: var(--accent); }
+  .hero[data-tone="gold"] .eyebrow .badge { background: var(--gold-soft); color: var(--gold); }
+  .hero[data-tone="bad"] .eyebrow .badge { background: var(--bad-soft); color: var(--bad); }
+  .hero-title { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 12px 0 2px; line-height: 1.15; }
+  .hero-clock { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; margin: 10px 0 2px; }
+  .hero-sub { color: var(--text-2); font-size: 14.5px; min-height: 1.2em; }
+  .hero .bar { margin-top: 14px; }
+  .hero-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .hero-actions { display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; margin-top: 18px; }
+  @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(44, 207, 189, .45); } 50% { box-shadow: 0 0 0 10px rgba(44, 207, 189, 0); } }
+  .ready #accept:not(:disabled) { animation: breathe 1.4s ease-out infinite; }
+
+  /* =================================================================== callouts */
+  .callout { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); }
+  .callout .ico { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none; background: var(--surface-3); }
+  .callout .body { min-width: 0; flex: 1; }
+  .callout .t { font-weight: 600; }
+  .callout .d { color: var(--text-2); font-size: 13.5px; margin-top: 2px; }
+  .callout.gold { background: linear-gradient(0deg, var(--gold-soft), var(--gold-soft)), var(--surface); border-color: rgba(217, 181, 108, .25); }
+  .callout.gold .ico { background: var(--gold-soft); color: var(--gold); }
+  .callout.accent { background: linear-gradient(0deg, var(--accent-soft), var(--accent-soft)), var(--surface); border-color: rgba(44, 207, 189, .3); }
+  .callout.accent .ico { background: var(--accent-soft); color: var(--accent); }
+  .callout.bad { background: linear-gradient(0deg, var(--bad-soft), var(--bad-soft)), var(--surface); border-color: rgba(242, 109, 109, .3); }
+  .callout.bad .ico { background: var(--bad-soft); color: var(--bad); }
+  .callout .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .callout .actions .btn { flex: 1; }
+
+  /* =================================================================== settings list */
+  .list { margin: -4px 0; }
+  .item { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .item:first-child { border-top: 0; }
+  .item .grow { flex: 1; min-width: 0; }
+  .item .t { font-weight: 600; }
+  .item .d { font-size: 13px; color: var(--text-3); margin-top: 2px; }
+  .item .d.warn { color: var(--warn); opacity: .9; }
+  .favrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .favrow:first-child { border-top: 0; }
+  .favrow .rank { width: 22px; height: 22px; border-radius: 6px; background: var(--surface-3); color: var(--text-2); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .favrow .grow { flex: 1; font-weight: 500; }
+  .field { width: 100%; font: 16px var(--font); color: var(--text); background: var(--bg); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 11px 13px; min-width: 0; }
+  .field::placeholder { color: var(--text-3); }
+  .field:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .addrow { display: flex; gap: 8px; margin-top: 12px; }
+
+  /* =================================================================== champ select */
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .fav-chip { display: flex; align-items: center; gap: 9px; padding: 6px 12px 6px 6px; border-radius: 12px; flex: none;
+    border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font: 500 14px var(--font); text-align: left; cursor: pointer; }
+  .fav-chip .avatar { width: 34px; height: 34px; border-radius: 8px; }
+  .fav-chip small { display: block; font-size: 11.5px; color: var(--text-3); font-weight: 500; }
+  .fav-chip.available { border-color: rgba(61, 220, 151, .35); }
+  .fav-chip.available small { color: var(--good); }
+  .fav-chip.mine { border-color: rgba(44, 207, 189, .5); background: var(--accent-soft); }
+  .fav-chip.mine small { color: var(--accent); }
+  .fav-chip.ally_hover small { color: var(--warn); }
+  .fav-chip:disabled { cursor: default; }
   .fav-chip.banned, .fav-chip.ally, .fav-chip.enemy, .fav-chip.unavailable { opacity: .45; }
-  .fav-chip.ally_hover small { color: var(--amber); }
-  #star { width: 100%; margin-top: 10px; }
-  .favlist { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-  .favrow { display: flex; align-items: center; gap: 8px; }
-  .favrow .n { color: var(--muted); width: 20px; }
-  .favrow .grow { flex: 1; }
-  .addrow { display: flex; gap: 8px; margin-top: 10px; }
-  .addrow input { padding: 10px; border-radius: 6px; }
+  .search { position: relative; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+  .search .field { padding-left: 38px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 10px; margin-top: 14px; max-height: 52vh; overflow-y: auto; padding: 2px; }
+  @media (min-width: 780px) { .grid { max-height: 58vh; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); } }
+  .champ { position: relative; border: 0; background: none; padding: 0; color: var(--text-2); font: 500 11.5px var(--font); text-align: center; cursor: pointer; }
+  .champ img { width: 100%; aspect-ratio: 1; border-radius: 12px; display: block; background: var(--surface-3); box-shadow: 0 0 0 1px var(--line) inset; transition: box-shadow .15s, transform .1s; }
+  .champ span { display: block; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .champ.sel img { box-shadow: 0 0 0 3px var(--accent); }
+  .champ.sel span { color: var(--text); font-weight: 600; }
+  .champ:active img { transform: scale(.96); }
+  .champ.fav::after { content: "★"; position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 6px;
+    background: rgba(10,13,19,.8); color: var(--gold); font-size: 11px; line-height: 18px; }
+  .empty { color: var(--text-3); text-align: center; grid-column: 1 / -1; padding: 18px; }
 
-  /* ---------- in game ---------- */
-  .me-card { display: flex; flex-direction: column; gap: 14px; }
+  .team .player { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); min-width: 0; }
+  .team .player:first-child { border-top: 0; }
+  .team .player > .who { min-width: 0; flex: 1; }
+  .team .who .n { font-weight: 600; }
+  .team .who .c { font-size: 13px; color: var(--text-3); }
+  .team .player.me .n { color: var(--accent); }
+  .ord { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); font-size: 12px; font-weight: 700; flex: none; }
+  .player.me .ord { background: var(--accent-soft); color: var(--accent); }
+  .icons { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .lockbar { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 8; display: flex; align-items: center; gap: 12px;
+    padding: 10px; border-radius: 18px; background: rgba(23, 30, 42, .92); border: 1px solid var(--line-2);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 18px 40px -12px rgba(0,0,0,.8); }
+  .lockbar .avatar { width: 46px; height: 46px; border-radius: 12px; }
+  .lockbar .who { min-width: 0; flex: 1; }
+  .lockbar .who .n { font-weight: 700; font-size: 16px; }
+  .lockbar .who .d { font-size: 12.5px; color: var(--text-3); }
+  .lockbar .btn { min-width: 132px; }
+  .lockbar.ban .btn.primary { background: var(--bad); color: #2a0808; }
+  @media (max-width: 779px) {
+    .lockbar { position: fixed; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); }
+    body.cs { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+  }
+
+  /* =================================================================== in game */
   .me-head { display: flex; align-items: center; gap: 14px; }
-  .me-head .icon { width: 64px; height: 64px; border-radius: 8px; border: 2px solid var(--gold); }
-  .me-head .lvl { font-size: 13px; color: var(--muted); }
-  .kda { font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-  .kda .d { color: var(--red); }
-  .stats4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
-  .stat { background: var(--panel2); border-radius: 8px; padding: 10px 4px; }
-  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
-  .stat small { color: var(--muted); }
-  .bar { height: 8px; border-radius: 4px; background: var(--panel2); overflow: hidden; position: relative; }
-  .bar i { display: block; height: 100%; background: var(--gold); border-radius: 4px; }
-  .bar.good i { background: var(--green); }
-  .dead { text-align: center; padding: 10px; border-radius: 8px; background: #e8405722; border: 1px solid var(--red); font-weight: 700; }
-  .scoreline { display: flex; justify-content: center; align-items: center; gap: 14px; font-size: 28px; font-weight: 700; margin-bottom: 10px; }
-  .scoreline .ally { color: var(--blue); } .scoreline .enemy { color: var(--red); }
-  .sb { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .sb td { padding: 5px 4px; border-top: 1px solid #ffffff10; vertical-align: middle; }
-  .sb tr.me td { color: var(--gold); font-weight: 700; }
-  .sb tr.isdead td { opacity: .5; }
-  .sb .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .sb .icon { width: 28px; height: 28px; }
-  .sb .team-h td { color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; border-top: 0; padding-top: 12px; }
-  .sb .nm { max-width: 110px; }
-  @media (max-width: 420px) { .sb .hide-s { display: none; } }
-  .feed { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-  .feed div { display: flex; gap: 10px; }
-  .feed .t { color: var(--muted); font-variant-numeric: tabular-nums; width: 42px; flex: none; }
-  .feed .ally { color: var(--blue); } .feed .enemy { color: var(--red); }
-  .feed .me { color: var(--gold); font-weight: 700; } .feed .me-dead { color: var(--red); font-weight: 700; }
-  .result { font-size: 30px; font-weight: 800; text-align: center; letter-spacing: .1em; }
-  .result.win { color: var(--blue); } .result.lose { color: var(--red); }
+  .kda { font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .kda .sep { color: var(--text-3); font-weight: 500; padding: 0 3px; }
+  .kda .d { color: var(--bad); }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+  .tile { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 6px; text-align: center; }
+  .tile b { display: block; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile small { color: var(--text-3); font-size: 11.5px; }
+  .items { display: flex; gap: 4px; flex-wrap: wrap; }
+  .items img, .items span { width: 24px; height: 24px; border-radius: 6px; background: var(--surface-3); display: inline-block; }
+  .items.big img, .items.big span { width: 38px; height: 38px; border-radius: 9px; }
+  .scoreline { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 2px 0 12px; font-variant-numeric: tabular-nums; }
+  .scoreline b { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+  .scoreline .ally { color: var(--accent); } .scoreline .enemy { color: var(--bad); }
+  .sb { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .sb td { padding: 7px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
+  .sb tr.me td { background: var(--accent-soft); }
+  .sb tr.me td:first-child { border-radius: 10px 0 0 10px; } .sb tr.me td:last-child { border-radius: 0 10px 10px 0; }
+  .sb tr.isdead td { opacity: .45; }
+  .sb .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sb .nm b { font-weight: 600; } .sb .nm small { display: block; color: var(--text-3); font-size: 12px; }
+  .sb .team-h td { border-top: 0; padding: 14px 4px 6px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+  @media (max-width: 440px) { .sb .hide-s { display: none; } }
+  .feed { display: flex; flex-direction: column; }
+  .feed .ev { display: grid; grid-template-columns: 46px 12px 1fr; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; }
+  .feed .ev .t { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .feed .ev .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  .feed .ev.ally .dot { background: var(--accent); } .feed .ev.enemy .dot { background: var(--bad); }
+  .feed .ev.me .dot { background: var(--gold); } .feed .ev.me-dead .dot { background: var(--bad); }
+  .feed .ev.me .x { font-weight: 600; } .feed .ev.me-dead .x { color: var(--bad); font-weight: 600; }
+  .result { font-size: 28px; font-weight: 800; letter-spacing: -.01em; margin-bottom: 12px; }
+  .result.win { color: var(--accent); } .result.lose { color: var(--bad); }
 
-  /* ---------- rank ---------- */
-  .rank-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .rank-name { font-size: 28px; font-weight: 800; color: var(--gold); line-height: 1.1; }
-  .rank-sp { text-align: right; white-space: nowrap; }
-  .rank-sp b { font-size: 34px; font-variant-numeric: tabular-nums; line-height: 1; }
-  .rank-sp small { color: var(--muted); margin-left: 4px; }
-  .nextgame { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; text-align: center; }
-  .nextgame .stat b { font-size: 24px; }
-  .nextgame .up b { color: var(--green); } .nextgame .down b { color: var(--red); }
-  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .preset { padding: 6px 10px; font-size: 12px; letter-spacing: .02em; border: 1px solid var(--gold-dim); border-radius: 14px; font-weight: 600; }
-  .preset.on { background: var(--gold); color: var(--bg); border-color: var(--gold); }
-  .slider-row { display: flex; align-items: center; gap: 12px; }
+  /* =================================================================== stats */
+  .rank-hero { display: flex; align-items: center; gap: 16px; }
+  .emblem { width: 72px; height: 72px; flex: none; }
+  .rank-name { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--gold); line-height: 1.1; }
+  .rank-meta { font-size: 13.5px; color: var(--text-2); margin-top: 3px; }
+  .sp-row { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
+  .sp-row b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sp-row small { color: var(--text-3); }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .duo .tile b { font-size: 22px; }
+  .duo .up b { color: var(--good); } .duo .down b { color: var(--bad); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .preset { padding: 7px 12px; font: 600 12.5px var(--font); border-radius: 99px; border: 1px solid var(--line-2); background: none; color: var(--text-2); cursor: pointer; }
+  .preset.on { background: var(--gold); border-color: var(--gold); color: #1d1406; }
+  .slider-row { display: flex; align-items: center; gap: 14px; }
   .slider-row input { flex: 1; accent-color: var(--gold); height: 28px; min-width: 0; }
-  .slider-row b { font-size: 20px; width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
-  .goal { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid #ffffff10; }
+  .slider-row b { font-size: 20px; width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+  .goal { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
   .goal:first-child { border-top: 0; }
-  .goal .gname { font-weight: 700; }
-  .goal .gname.emb { color: var(--gold); }
-  .goal .gnum { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .goal .gnum.no { color: var(--red); font-weight: 400; font-size: 13px; }
-  .scen { width: 100%; border-collapse: collapse; font-size: 14px; }
-  .scen td { padding: 6px 4px; border-top: 1px solid #ffffff10; }
-  .scen tr:first-child td { border-top: 0; }
-  .scen .w { color: var(--green); } .scen .l { color: var(--red); }
-  .spchip { display: inline-block; min-width: 44px; text-align: center; padding: 2px 6px; border-radius: 5px; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
-  .spchip.up { background: #0acb6e22; color: var(--green); } .spchip.down { background: #e8405722; color: var(--red); }
-  .sprow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #ffffff10; font-size: 14px; }
-  .sprow:first-child { border-top: 0; }
+  .goal .grow { flex: 1; min-width: 0; }
+  .goal .n { font-weight: 600; }
+  .goal .n.emb { color: var(--gold); }
+  .goal .d { font-size: 12.5px; color: var(--text-3); }
+  .goal .v { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .goal .v.no { color: var(--bad); font-weight: 500; font-size: 13px; }
+  .scen { display: grid; grid-template-columns: auto 1fr 1fr; gap: 0; font-size: 13.5px; }
+  .scen > div { padding: 9px 6px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scen > .h { border-top: 0; color: var(--text-3); font-size: 12px; font-weight: 600; padding-top: 0; }
+  .scen .w { color: var(--good); } .scen .l { color: var(--bad); }
+  .delta { display: inline-block; min-width: 48px; text-align: center; padding: 3px 7px; border-radius: 8px; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .delta.up { background: var(--good-soft); color: var(--good); } .delta.down { background: var(--bad-soft); color: var(--bad); }
+  .rowline { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .rowline:first-child { border-top: 0; }
+  .rowline .grow { flex: 1; min-width: 0; }
+  .rowline .t { font-weight: 600; font-size: 14.5px; }
+  .rowline .d { font-size: 12.5px; color: var(--text-3); }
+  .rowline .r { text-align: right; font-size: 12.5px; color: var(--text-3); white-space: nowrap; }
+  .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .overview .tile b { font-size: 22px; }
+  .spark { width: 100%; height: 76px; display: block; margin-top: 4px; }
+  .wr { font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .wr.hi { color: var(--good); } .wr.lo { color: var(--bad); }
+  .wl { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none; }
+  .wl.w { background: var(--accent-soft); color: var(--accent); } .wl.l { background: var(--bad-soft); color: var(--bad); } .wl.u { background: var(--surface-3); color: var(--text-3); }
+  .prefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+  .skeleton { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: sk 1.2s infinite; }
+  @keyframes sk { to { background-position: -200% 0; } }
 
-  /* ---------- toast, update banner, footer ---------- */
-  .toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, calc(100% + 40px)); z-index: 20;
-    visibility: hidden; transition: transform .2s, visibility 0s .2s;
-    max-width: min(92vw, 520px); padding: 14px 18px; border-radius: 10px; font-weight: 700; font-size: 16px;
-    background: #0acb6e; color: #010a13; box-shadow: 0 8px 30px #0008; text-align: center; }
-  .toast.show { transform: translate(-50%, 0); visibility: visible; transition: transform .2s; }
-  .toast.bad { background: var(--red); color: #fff; }
-  .update { border-color: var(--blue); }
-  .update a { color: var(--blue); font-weight: 700; }
-  .warn { color: var(--amber); }
-  .legal { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px; }
-  .legal a { color: var(--muted); }
-
-  /* ---------- aegis ---------- */
-  .aegis { border-color: var(--gold); background: linear-gradient(135deg, #c8aa6e22, var(--panel) 60%); }
-  .aegis b.t { color: var(--gold); font-size: 17px; }
-  .prefs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-  .prefs span { padding: 4px 10px; border-radius: 12px; background: var(--panel2); font-size: 13px; }
-  .prefs span.boost { border: 1px solid var(--gold); color: var(--gold); }
-
-  /* ---------- stats ---------- */
-  .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
-  .spark { width: 100%; height: 70px; display: block; margin-top: 8px; }
-  .champrow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid #ffffff10; }
-  .champrow:first-child { border-top: 0; }
-  .champrow .icon { width: 40px; height: 40px; }
-  .champrow .nm { font-weight: 700; }
-  .champrow .nm .star { color: var(--gold); }
-  .wr { font-size: 18px; font-weight: 700; text-align: right; }
-  .wr.hi { color: var(--green); } .wr.lo { color: var(--red); }
-  .game { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #ffffff10; font-size: 14px; }
-  .game:first-child { border-top: 0; }
-  .wl { flex: none; width: 26px; height: 26px; border-radius: 5px; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
-  .wl.w { background: #0ac8b933; color: var(--blue); } .wl.l { background: #e8405733; color: var(--red); } .wl.u { background: var(--panel2); color: var(--muted); }
-  .game .grow { flex: 1; min-width: 0; }
-  .game .num { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; text-align: right; }
+  /* =================================================================== footer, toast */
+  footer { max-width: 1100px; margin: 26px auto 0; text-align: center; color: var(--text-3); font-size: 13px; }
+  footer .links { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+  footer details { margin-top: 12px; }
+  footer summary { cursor: pointer; list-style: none; color: var(--text-3); }
+  footer summary::-webkit-details-marker { display: none; }
+  footer .legal { font-size: 11.5px; line-height: 1.55; max-width: 560px; margin: 8px auto 0; }
+  .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 30; transform: translate(-50%, calc(100% + 40px));
+    visibility: hidden; transition: transform .22s, visibility 0s .22s; max-width: min(92vw, 480px);
+    display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-radius: 14px; font-weight: 600; font-size: 14.5px;
+    background: #1f2a24; color: var(--good); border: 1px solid rgba(61,220,151,.3); box-shadow: 0 18px 40px -12px rgba(0,0,0,.8); }
+  .toast.show { transform: translate(-50%, 0); visibility: visible; transition: transform .22s; }
+  .toast.bad { background: #2a1c1f; color: #ffb4b4; border-color: rgba(242,109,109,.35); }
+  .lockbar ~ .toast.show, body.cs .toast.show { transform: translate(-50%, -84px); }
 </style>
 </head>
 <body>
+<!-- icons (Lucide, ISC license) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/><path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="m5 14 4 4"/><path d="m7 17-3 3"/><path d="m3 19 2 2"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2-1.43"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M22 8.82a15 15 0 0 0-11.29-3.76"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-skull" viewBox="0 0 24 24"><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2"/><path d="m12.5 17-.5-1-.5 1h1z"/><path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+</svg>
+
 <header>
-  <span class="dot" id="dot"></span>
-  <h1>League Remote</h1>
-  <nav class="tabs">
-    <button class="tab on" data-tab="live">LIVE</button>
-    <button class="tab" data-tab="stats">STATS</button>
-  </nav>
-</header>
-
-<!-- ============================== LIVE ============================== -->
-<main class="layout" id="page-live">
-  <div class="col">
-    <div class="card" id="statusCard">
-      <div class="phase" id="phase">Connecting…</div>
-      <div class="big" id="clock"></div>
-      <div class="sub" id="sub"></div>
-      <div class="hint" id="rankLine" style="text-align:center" hidden></div>
-    </div>
-
-    <div class="btns" id="queueBtns">
-      <button id="accept" disabled>ACCEPT</button>
-      <button id="decline" disabled>DECLINE</button>
-    </div>
-    <button class="go-big" id="reconnect" hidden>RECONNECT</button>
-
-    <!-- champ select: actions -->
-    <div class="turn" id="turn" hidden></div>
-    <div class="card aegis" id="aegisCs" hidden></div>
-    <div class="card swapcard" id="swapIn" hidden>
-      <div id="swapInText"></div>
-      <div class="btns">
-        <button id="swapAccept">ACCEPT</button>
-        <button id="swapDecline">DECLINE</button>
+  <div class="head">
+    <div class="brand">
+      <img src="/assets/icon.png" alt="">
+      <div style="min-width:0">
+        <div class="brand-name">League Remote</div>
+        <div class="conn" id="conn">Connecting…</div>
       </div>
     </div>
-    <div class="card" id="myChamps" hidden>
-      <div class="label">My champions</div>
-      <div class="favs" id="favs"></div>
-    </div>
-    <div class="card" id="pickerCard" hidden>
-      <input type="search" id="search" placeholder="Search champion…" autocomplete="off">
-      <div class="grid" id="grid"></div>
-      <button class="small" id="star" hidden></button>
-    </div>
-    <button id="lock" disabled hidden>CHOOSE A CHAMPION</button>
+    <nav class="seg" role="tablist">
+      <button class="tab on" data-tab="live" role="tab">Live</button>
+      <button class="tab" data-tab="stats" role="tab">Stats</button>
+    </nav>
+  </div>
+</header>
 
-    <!-- in game: me -->
-    <div class="card" id="noLive" hidden>
-      <div class="label">Live stats</div>
-      <div class="hint">Waiting for the game to load… If it never appears, this game mode doesn't provide Riot's live game data.</div>
+<!-- ============================================================= LIVE -->
+<main class="layout" id="page-live">
+  <div class="col">
+    <section class="card hero" id="statusCard" aria-live="polite">
+      <div class="eyebrow"><span class="badge" id="heroIcon"><svg class="i"><use href="#i-clock"/></svg></span><span id="phase">Connecting…</span></div>
+      <div class="hero-title" id="heroTitle" hidden></div>
+      <div class="hero-clock" id="clock" hidden></div>
+      <div class="hero-sub" id="sub"></div>
+      <div class="bar" id="heroBar" hidden><i id="heroBarFill"></i></div>
+      <div class="hero-foot" id="heroFoot">
+        <span class="pill gold" id="rankLine" hidden></span>
+      </div>
+      <div class="hero-actions" id="queueBtns" hidden>
+        <button class="btn primary lg" id="accept" disabled>Accept</button>
+        <button class="btn ghost lg" id="decline" disabled>Decline</button>
+      </div>
+      <button class="btn primary lg block" id="reconnect" hidden style="margin-top:16px">Reconnect</button>
+    </section>
+
+    <!-- champ select -->
+    <div class="callout accent" id="turn" hidden></div>
+    <div class="callout gold" id="aegisCs" hidden></div>
+    <div class="callout accent" id="swapIn" hidden>
+      <span class="ico"><svg class="i"><use href="#i-swap"/></svg></span>
+      <div class="body">
+        <div id="swapInText"></div>
+        <div class="actions">
+          <button class="btn primary sm" id="swapAccept">Accept</button>
+          <button class="btn ghost sm" id="swapDecline">Decline</button>
+        </div>
+      </div>
     </div>
-    <div class="card me-card" id="meCard" hidden></div>
+    <section class="card tight" id="myChamps" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-star"/></svg>Your champions</div>
+      <div class="chips" id="favs"></div>
+    </section>
+    <section class="card" id="pickerCard" hidden>
+      <div class="search"><svg class="i"><use href="#i-search"/></svg>
+        <input type="search" class="field" id="search" placeholder="Search champions" autocomplete="off" enterkeyhint="search"></div>
+      <div class="grid" id="grid"></div>
+      <div style="text-align:center;margin-top:12px"><button class="link" id="star" hidden></button></div>
+    </section>
+    <div class="lockbar" id="lockBar" hidden>
+      <span id="lockThumb"></span>
+      <div class="who"><div class="n ellipsis" id="lockName"></div><div class="d" id="lockHint"></div></div>
+      <button class="btn primary" id="lock" disabled>Lock in</button>
+    </div>
+
+    <!-- in game -->
+    <section class="card" id="noLive" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-swords"/></svg>Live stats</div>
+      <div class="stack"><div class="skeleton" style="width:60%"></div><div class="skeleton" style="width:85%"></div><div class="skeleton" style="width:40%"></div></div>
+      <p class="note" style="margin:14px 0 0">Waiting for the game to load. If this never fills in, this game mode doesn't share Riot's live game data.</p>
+    </section>
+    <section class="card" id="meCard" hidden></section>
   </div>
 
   <div class="col">
-    <!-- champ select: team -->
-    <div class="card" id="teamCard" hidden>
-      <div class="label">Your team · pick order</div>
+    <section class="card" id="teamCard" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-swords"/></svg>Your team<span class="aside">pick order</span></div>
       <div class="team" id="team"></div>
-      <button class="small best" id="swapUp" hidden></button>
+      <button class="btn ghost sm block" id="swapUp" hidden style="margin-top:12px"></button>
       <div id="bansBox" hidden>
-        <div class="label" style="margin-top:14px">Bans</div>
+        <div class="divider"></div>
+        <div class="card-title" style="margin-bottom:8px">Bans</div>
         <div class="icons" id="bans"></div>
       </div>
       <div id="enemyBox" hidden>
-        <div class="label" style="margin-top:14px">Enemy picks</div>
+        <div class="divider"></div>
+        <div class="card-title" style="margin-bottom:8px">Enemy picks</div>
         <div class="icons" id="enemies"></div>
       </div>
-    </div>
+    </section>
 
-    <!-- in game: scoreboard + feed -->
-    <div class="card" id="sbCard" hidden>
-      <div class="scoreline"><span class="ally" id="sAlly">0</span><span class="hint">vs</span><span class="enemy" id="sEnemy">0</span></div>
+    <section class="card" id="sbCard" hidden>
+      <div class="scoreline"><b class="ally" id="sAlly">0</b><span class="faint">vs</span><b class="enemy" id="sEnemy">0</b></div>
       <table class="sb" id="sb"></table>
-    </div>
-    <div class="card" id="feedCard" hidden>
-      <div class="label">Game feed</div>
+    </section>
+    <section class="card" id="feedCard" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-bell"/></svg>Game feed</div>
       <div class="feed" id="feed"></div>
-    </div>
+    </section>
 
-    <!-- settings: only shown outside champ select and games -->
+    <!-- settings: only outside champ select and games -->
     <div class="col" id="settings">
-    <div class="card update" id="updateCard" hidden></div>
-    <div class="card">
-      <div class="row">
-        <div>
-          <div><b>Auto-accept</b></div>
-          <div class="hint">Accept "Match found" automatically and just notify you.</div>
-          <div class="hint warn">Riot's rules treat this as automation, so there's a small ban risk. Off = you tap Accept.</div>
+      <div class="callout accent" id="updateCard" hidden></div>
+      <section class="card">
+        <div class="card-title">Settings</div>
+        <div class="list">
+          <div class="item">
+            <div class="grow">
+              <div class="t">Auto-accept</div>
+              <div class="d">Accept "Match found" for you and just send an alert.</div>
+              <div class="d warn">Riot counts this as automation: a small ban risk.</div>
+            </div>
+            <button class="switch" id="auto" role="switch" aria-label="Auto-accept"></button>
+          </div>
+          <div class="item">
+            <div class="grow">
+              <div class="t">Start with Windows</div>
+              <div class="d">Runs in the background, so SP tracking never misses a game.</div>
+            </div>
+            <button class="switch" id="startup" role="switch" aria-label="Start with Windows"></button>
+          </div>
         </div>
-        <button class="toggle" id="auto" aria-label="Toggle auto-accept"></button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="row">
-        <div>
-          <div><b>Start with Windows</b></div>
-          <div class="hint">Runs hidden in the background when you log in. Opening League Remote again restarts it.</div>
+      </section>
+      <section class="card">
+        <div class="card-title"><svg class="i"><use href="#i-star"/></svg>My champions<span class="aside">priority order</span></div>
+        <div id="favlist"></div>
+        <div class="addrow">
+          <input class="field" id="favAdd" list="champNames" placeholder="Add a champion" autocomplete="off" enterkeyhint="done">
+          <button class="btn primary sm" id="favAddBtn" style="min-height:44px">Add</button>
         </div>
-        <button class="toggle" id="startup" aria-label="Toggle start with Windows"></button>
-      </div>
+        <datalist id="champNames"></datalist>
+        <p class="note" style="margin:10px 0 0">Shown first in champ select, and as one-tap buttons in your alerts.</p>
+      </section>
     </div>
-    <div class="card">
-      <div><b>My champions</b></div>
-      <div class="hint">Your picks in priority order. Shown first in champ select, and as one-tap buttons in alerts.</div>
-      <div class="favlist" id="favlist"></div>
-      <div class="addrow">
-        <input id="favAdd" list="champNames" placeholder="Add champion…" autocomplete="off">
-        <button class="small go" id="favAddBtn">ADD</button>
-      </div>
-      <datalist id="champNames"></datalist>
-    </div>
-    </div>
-    <div class="log" id="log"></div>
-    <div class="log"><span id="version"></span> ·
-      <a href="#" id="checkUpdate" style="color:var(--muted)">Check for updates</a> ·
-      <a href="/setup" style="color:var(--muted)">Phone setup</a></div>
-    <div class="legal">League Remote isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or
-      anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties
-      are trademarks or registered trademarks of Riot Games, Inc.</div>
   </div>
 </main>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- ============================== STATS ============================== -->
+<!-- ============================================================= STATS -->
 <main class="layout" id="page-stats" hidden>
   <div class="col">
-    <div class="card" id="statsLoading">
-      <div class="hint">Loading your match history and rank from the League client…</div>
-    </div>
-    <div class="card" id="rankCard" hidden>
-      <div class="label">Classic rank · Summoner's Journey</div>
-      <div class="rank-head">
-        <div style="min-width:0"><div class="rank-name" id="rankName"></div><div class="hint" id="rankSub"></div></div>
-        <div class="rank-sp"><b id="rankSp"></b><small>/ 100 SP</small></div>
+    <section class="card" id="statsLoading">
+      <div class="stack"><div class="skeleton" style="width:45%"></div><div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:65%"></div></div>
+      <p class="note" style="margin:14px 0 0">Loading your rank and match history from the League client…</p>
+    </section>
+    <section class="card" id="rankCard" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-trophy"/></svg>Classic rank<span class="aside">Summoner's Journey</span></div>
+      <div class="rank-hero">
+        <div id="emblem"></div>
+        <div style="min-width:0">
+          <div class="rank-name" id="rankName"></div>
+          <div class="rank-meta" id="rankSub"></div>
+        </div>
       </div>
-      <div class="bar"><i id="rankBar"></i></div>
-      <div class="nextgame">
-        <div class="stat up"><b id="winSp"></b><small>if you win</small></div>
-        <div class="stat down"><b id="lossSp"></b><small>if you lose</small></div>
+      <div class="sp-row"><span class="muted">Season points</span><span><b id="rankSp"></b> <small>/ 100</small></span></div>
+      <div class="bar gold"><i id="rankBar"></i></div>
+      <div class="duo">
+        <div class="tile up"><b id="winSp"></b><small>if you win</small></div>
+        <div class="tile down"><b id="lossSp"></b><small>if you lose</small></div>
       </div>
-      <div class="hint" id="spNote" style="margin-top:10px"></div>
-    </div>
-    <div class="card" id="climbCard" hidden>
-      <div class="label">Climb forecast</div>
+      <p class="note" id="spNote" style="margin:12px 0 0"></p>
+    </section>
+    <section class="card" id="climbCard" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-flame"/></svg>Climb forecast</div>
       <div id="wrBox">
         <div class="presets" id="presets"></div>
         <div class="slider-row">
           <input type="range" id="wr" min="30" max="75" step="1" aria-label="Win rate">
           <b id="wrVal"></b>
         </div>
-        <div class="hint" id="evLine" style="margin:6px 0 8px"></div>
+        <p class="note" id="evLine" style="margin:6px 0 10px"></p>
       </div>
       <div id="goals"></div>
-      <div class="hint" id="dropLine" style="margin-top:10px"></div>
-    </div>
-    <div class="card" id="scenCard" hidden>
-      <div class="label">Next games</div>
-      <table class="scen" id="scen"></table>
-    </div>
-    <div class="card aegis" id="aegisCard" hidden>
-      <div class="label">Aegis of Valor</div>
+      <p class="note" id="dropLine" style="margin:10px 0 0"></p>
+    </section>
+    <section class="card" id="scenCard" hidden>
+      <div class="card-title">Next games<span class="aside">rank · SP</span></div>
+      <div class="scen" id="scen"></div>
+    </section>
+    <section class="card" id="aegisCard" hidden>
+      <div class="card-title"><svg class="i"><use href="#i-shield"/></svg>Aegis of Valor</div>
       <div id="aegisBody"></div>
-    </div>
-    <div class="card" id="spHistCard" hidden>
-      <div class="label">SP history</div>
+    </section>
+    <section class="card" id="spHistCard" hidden>
+      <div class="card-title">SP history</div>
       <div id="spHist"></div>
-    </div>
+    </section>
   </div>
   <div class="col">
-    <div class="card">
-      <div class="label" id="overviewLabel">Classic season</div>
+    <section class="card">
+      <div class="card-title" id="overviewLabel">Classic season</div>
       <div class="overview" id="overview"></div>
-      <div class="hint" id="streak" style="text-align:center;margin-top:10px"></div>
-      <div class="hint" id="scope" style="margin-top:10px"></div>
-    </div>
-    <div class="card">
-      <div class="label">CS per minute · your last 20 games</div>
+      <div class="hero-foot" id="streak" style="margin-top:12px"></div>
+      <p class="note" id="scope" style="margin:12px 0 0"></p>
+    </section>
+    <section class="card">
+      <div class="card-title">CS per minute<span class="aside">last 20 games</span></div>
       <div id="trend"></div>
-    </div>
-    <div class="card">
-      <div class="label" id="champLabel">Champions</div>
+    </section>
+    <section class="card">
+      <div class="card-title" id="champLabel">Champions</div>
       <div id="champTable"></div>
-    </div>
-    <div class="card">
-      <div class="label">Recent games</div>
+    </section>
+    <section class="card">
+      <div class="card-title">Recent games</div>
       <div id="recent"></div>
-    </div>
+    </section>
   </div>
 </main>
+
+<footer>
+  <div class="links">
+    <span id="version"></span>
+    <button class="link" id="checkUpdate">Check for updates</button>
+    <a class="link" href="/setup">Phone setup</a>
+  </div>
+  <div class="note" id="log" hidden></div>
+  <details>
+    <summary>About</summary>
+    <p class="legal">League Remote only reads what the League client and game already show you, and only acts when you tap.
+      It isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in
+      producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered
+      trademarks of Riot Games, Inc.</p>
+  </details>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -447,13 +617,8 @@ const $ = id => document.getElementById(id);
 })();
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const mmss = s => s == null ? "" : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const NAMES = {
-  None: "Idle", Lobby: "In Lobby", Matchmaking: "In Queue", ReadyCheck: "MATCH FOUND!",
-  ChampSelect: "Champ Select", InProgress: "In Game", GameStart: "Loading Game",
-  WaitingForStats: "Game Over", PreEndOfGame: "Game Over", EndOfGame: "Game Over",
-  Reconnect: "Reconnect Needed",
-};
-const CS_PHASES = { PLANNING: "Declare your pick", BAN_PICK: "Bans & picks", FINALIZATION: "Final phase" };
+const svg = (name, extra = "") => `<svg class="i" ${extra}><use href="#i-${name}"/></svg>`;
+const CS_PHASES = { PLANNING: "Planning: declare your pick", BAN_PICK: "Bans & picks", FINALIZATION: "Final phase: runes & skins" };
 const IN_GAME = ["GameStart", "InProgress", "Reconnect", "WaitingForStats", "PreEndOfGame", "EndOfGame"];
 
 let champs = {};                        // id -> name
@@ -464,12 +629,26 @@ let lastGridKey = "";
 let lastCs = null;
 let csGoal = 7;
 let tab = "live";
+let reachable = true;
 
-const icon = (id, cls = "icon") => id ? `<img class="${cls}" src="/icon/${+id}" alt="">` : `<span class="${cls}"></span>`;
+const icon = (id, cls = "avatar") => id ? `<img class="${cls}" src="/icon/${+id}" alt="">` : `<span class="${cls}"></span>`;
 const itemIcons = (ids, n = 7) => (ids || []).slice(0, n)
   .map(id => `<img src="/item/${+id}" alt="" onerror="this.replaceWith(document.createElement('span'))">`).join("");
 const champName = id => champs[id] || (id ? `#${id}` : "");
 const show = (id, on) => { $(id).hidden = !on; };
+
+// "2026-09-26 18:05" -> "2h ago" / "yesterday" / "Sep 24"
+function ago(stamp) {
+  if (!stamp) return "";
+  const t = new Date(String(stamp).replace(" ", "T"));
+  if (isNaN(t)) return esc(stamp);
+  const m = (Date.now() - t) / 60000;
+  if (m < 1) return "just now";
+  if (m < 60) return `${Math.floor(m)}m ago`;
+  if (m < 60 * 24) return `${Math.floor(m / 60)}h ago`;
+  if (m < 60 * 48) return "yesterday";
+  return t.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 async function loadChamps() {
   try {
@@ -490,7 +669,46 @@ const FAV_STATUS = {
   ally_hover: "{by} is hovering", enemy: "Enemy picked", unavailable: "Not available",
 };
 
-/* ============================== champ select ============================== */
+/* ================================================================== hero (status card) */
+const HERO = {
+  offline:     { icon: "wifi-off", tone: "bad", label: "Can't reach your PC" },
+  noclient:    { icon: "power", tone: "", label: "League isn't running" },
+  None:        { icon: "home", tone: "", label: "Ready" },
+  Lobby:       { icon: "home", tone: "", label: "In lobby" },
+  Matchmaking: { icon: "clock", tone: "gold", label: "In queue" },
+  ReadyCheck:  { icon: "bell", tone: "accent", label: "Match found" },
+  ChampSelect: { icon: "swords", tone: "accent", label: "Champ select" },
+  GameStart:   { icon: "swords", tone: "", label: "Loading game" },
+  InProgress:  { icon: "swords", tone: "", label: "In game" },
+  Reconnect:   { icon: "plug", tone: "bad", label: "Reconnect needed" },
+  WaitingForStats: { icon: "trophy", tone: "gold", label: "Game over" },
+  PreEndOfGame:    { icon: "trophy", tone: "gold", label: "Game over" },
+  EndOfGame:       { icon: "trophy", tone: "gold", label: "Game over" },
+};
+let heroKey = "";
+function setHero(key, title, sub) {
+  const h = HERO[key] || { icon: "home", tone: "", label: key };
+  if (heroKey !== key) {
+    heroKey = key;
+    $("statusCard").dataset.tone = h.tone;
+    $("heroIcon").innerHTML = svg(h.icon);
+  }
+  $("phase").textContent = h.label;
+  $("heroTitle").textContent = title || "";
+  show("heroTitle", !!title);
+  $("sub").textContent = sub || "";
+}
+
+function renderOffline() {
+  reachable = false;
+  $("conn").className = "conn bad";
+  $("conn").textContent = "Can't reach your PC";
+  setHero("offline", "Your phone can't reach League Remote",
+    "Check that your phone is on the same Wi-Fi as your PC and that League Remote is running (the bell icon near the clock).");
+  ["clock", "heroBar", "rankLine", "queueBtns", "reconnect"].forEach(id => show(id, false));
+}
+
+/* ================================================================== champ select */
 function renderChampSelect(cs) {
   lastCs = cs;
   const act = cs.action;
@@ -498,34 +716,35 @@ function renderChampSelect(cs) {
   if (!Object.keys(champs).length) loadChamps();
 
   const turn = $("turn");
-  turn.className = "turn" + (isBan ? " ban" : "") + (act && act.in_progress ? " now" : "");
-  turn.textContent = act && act.in_progress ? `YOUR TURN TO ${isBan ? "BAN" : "PICK"}!`
-    : act ? `Your ${isBan ? "ban" : "pick"} is coming up`
-    : cs.done ? "✔ You're locked in" : "Waiting for others…";
+  const mine = act && act.in_progress;
+  turn.className = "callout " + (mine ? (isBan ? "bad" : "accent") : "");
+  turn.innerHTML = `<span class="ico">${svg(mine ? (isBan ? "x" : "swords") : cs.done ? "check" : "clock")}</span>
+    <div class="body"><div class="t">${mine ? `Your turn to ${isBan ? "ban" : "pick"}` : act ? `Your ${isBan ? "ban" : "pick"} is coming up`
+      : cs.done ? "You're locked in" : "Waiting for others"}</div>
+    <div class="d">${mine ? "Choose below, then tap " + (isBan ? "Ban" : "Lock in") + "." : act ? "You can already choose and hover a champion."
+      : cs.done ? "Good luck, have fun." : "Nothing to do right now."}</div></div>`;
 
   const ae = cs.aegis;
   show("aegisCs", !!ae);
   if (ae && ae.lost) {
-    $("aegisCs").innerHTML = `<b class="t">🛡 Aegis of Valor lost</b>
-      <div class="hint" style="color:var(--text)">You were autofilled <b>${esc(ae.role_name)}</b> (your #${+ae.pref} role)
-      but swapped to <b>${esc(ae.now)}</b>. Swapping roles removes the bonus.</div>`;
+    $("aegisCs").innerHTML = `<span class="ico">${svg("shield")}</span><div class="body">
+      <div class="t">Aegis of Valor lost</div>
+      <div class="d">You were autofilled ${esc(ae.role_name)} (your #${+ae.pref} role) but swapped to ${esc(ae.now)}.</div></div>`;
   } else if (ae) {
     const base = ae.base_win;
-    const sp = base ? ` (about +${Math.round(base * (1 + ae.bonus / 100))} instead of +${base})` : "";
-    $("aegisCs").innerHTML = `<b class="t">🛡 Aegis of Valor possible</b>
-      <div class="hint" style="color:var(--text)">You're <b>${esc(ae.role_name)}</b>, your #${+ae.pref} role.
-      If you win, SP can be <b>+${+ae.bonus}%</b>${sp}.</div>
-      <div class="hint">Riot: occasional, not guaranteed. Don't swap roles or you lose it.</div>`;
+    const sp = base ? ` (~+${Math.round(base * (1 + ae.bonus / 100))} SP)` : "";
+    $("aegisCs").innerHTML = `<span class="ico">${svg("shield")}</span><div class="body">
+      <div class="t">Aegis of Valor: +${+ae.bonus}% SP if you win${sp}</div>
+      <div class="d">You're ${esc(ae.role_name)}, your #${+ae.pref} role. Don't swap roles or you lose it. Not guaranteed.</div></div>`;
   }
 
   const sin = cs.swap_in;
   show("swapIn", !!sin);
   if (sin) {
     const better = sin.their_order < sin.my_order;
-    $("swapIn").classList.toggle("worse", !better);
-    $("swapInText").innerHTML = `<b>${esc(sin.name)}</b> wants to swap pick order.<br>
-      You'd pick <b>#${+sin.their_order}</b> instead of #${+sin.my_order} —
-      ${better ? "✅ earlier, recommended" : "⚠ later"}`;
+    $("swapIn").className = "callout " + (better ? "accent" : "bad");
+    $("swapInText").innerHTML = `<div class="t">${esc(sin.name)} wants to swap pick order</div>
+      <div class="d">You'd pick #${+sin.their_order} instead of #${+sin.my_order}: ${better ? "earlier, good for you." : "later."}</div>`;
     $("swapAccept").dataset.id = $("swapDecline").dataset.id = sin.id;
   }
 
@@ -539,28 +758,29 @@ function renderChampSelect(cs) {
   const up = cs.swap_up;
   const canSwap = cs.pick_action && !cs.swap_out;
   $("team").innerHTML = cs.team.map(p => {
-    let right = `<div class="st${p.locked ? " locked" : ""}">${p.locked ? "Locked" : p.champ ? "Hovering" : ""}</div>`;
+    let right = p.locked ? `<span class="pill good">${svg("check", 'style="width:13px;height:13px"')}Locked</span>`
+      : p.champ ? `<span class="pill">Hovering</span>` : "";
     if (!p.me && p.swap_state === "SENT") {
-      right = `<button class="small no" data-cancel="${+p.swap_id}">Waiting… ✕</button>`;
+      right = `<button class="btn ghost sm" data-cancel="${+p.swap_id}">Cancel swap</button>`;
     } else if (!p.me && canSwap && !p.locked && p.swap_state === "AVAILABLE" && p.order < cs.my_order) {
-      right = `<button class="small ${up && up.cell === p.cell ? "best" : "go"}" data-swap="${+p.swap_id}">⇅ Swap</button>`;
+      right = `<button class="btn ${up && up.cell === p.cell ? "gold" : "ghost"} sm" data-swap="${+p.swap_id}">${svg("swap")}Swap</button>`;
     }
     return `
     <div class="player${p.me ? " me" : ""}">
-      <div class="ord">${p.order ? "#" + +p.order : ""}</div>
+      <span class="ord">${p.order ? +p.order : ""}</span>
       ${icon(p.champ)}
-      <div class="ellipsis">${p.me ? "You" : esc(p.name || "Ally")}${p.me && p.pos ? ` · ${esc(p.pos)}` : ""}<br>
-        <small>${esc(champName(p.champ) || "—")}</small></div>
-      <div style="margin-left:auto">${right}</div>
+      <div class="who"><div class="n ellipsis">${p.me ? "You" : esc(p.name || "Ally")}${p.me && p.pos ? ` · ${esc(p.pos)}` : ""}</div>
+        <div class="c ellipsis">${esc(champName(p.champ) || "No champion yet")}</div></div>
+      ${right}
     </div>`;
   }).join("");
   show("swapUp", !!up);
-  if (up) $("swapUp").textContent = `⇅ Ask ${up.name} for pick #${up.order}`;
+  if (up) $("swapUp").innerHTML = `${svg("swap")}Ask ${esc(up.name)} for pick #${+up.order}`;
   show("bansBox", cs.bans.length);
-  $("bans").innerHTML = cs.bans.map(id => icon(id, "icon ban")).join("");
+  $("bans").innerHTML = cs.bans.map(id => icon(id, "avatar sm gray")).join("");
   const enemies = cs.enemies.filter(Boolean);
   show("enemyBox", enemies.length);
-  $("enemies").innerHTML = enemies.map(id => icon(id)).join("");
+  $("enemies").innerHTML = enemies.map(id => icon(id, "avatar sm")).join("");
 
   show("pickerCard", !!act);
   // new action (e.g. ban finished, now picking) -> fresh selection
@@ -581,18 +801,22 @@ function renderChampSelect(cs) {
   star.hidden = !act || !selected;
   if (selected) {
     const isFav = favIndex(champName(selected), kind) < 999;
-    star.textContent = isFav ? `★ Remove ${champName(selected)} from my ${kind}s` : `☆ Add ${champName(selected)} to my ${kind}s`;
+    star.textContent = isFav ? `Remove ${champName(selected)} from your ${kind}s` : `Add ${champName(selected)} to your ${kind}s`;
     star.dataset.op = isFav ? "remove" : "add";
     star.dataset.kind = kind;
   }
 
+  // sticky action bar
+  show("lockBar", !!act);
+  $("lockBar").className = "lockbar" + (isBan ? " ban" : "");
+  $("lockThumb").innerHTML = selected ? icon(selected) : `<span class="avatar"></span>`;
+  $("lockName").textContent = selected ? champName(selected) : "Choose a champion";
+  $("lockHint").textContent = !act ? "" : act.in_progress ? (selected ? `Ready to ${isBan ? "ban" : "lock in"}` : "Tap a champion above")
+    : "Wait for your turn";
   const lock = $("lock");
-  lock.hidden = !act;
-  lock.className = isBan ? "ban" : "";
   lock.disabled = !(act && act.in_progress && selected && cs.choices.includes(selected));
-  lock.textContent = !selected ? "CHOOSE A CHAMPION"
-    : !act || !act.in_progress ? `${champName(selected)} (wait for your turn)`
-    : `${isBan ? "BAN" : "LOCK IN"} ${champName(selected).toUpperCase()}`;
+  lock.textContent = isBan ? "Ban" : "Lock in";
+  document.body.classList.toggle("cs", !!act);
 }
 
 function renderGrid(cs) {
@@ -606,16 +830,17 @@ function renderGrid(cs) {
     .filter(c => !q || c.name.toLowerCase().includes(q))
     .sort((a, b) => (favIndex(a.name, kind) - favIndex(b.name, kind)) || a.name.localeCompare(b.name));
   $("grid").innerHTML = list.length ? list.map(c => `
-    <button class="champ${c.id === selected ? " sel" : ""}${favIndex(c.name, kind) < 999 ? " fav" : ""}" data-id="${+c.id}">
+    <button class="champ${c.id === selected ? " sel" : ""}${favIndex(c.name, kind) < 999 ? " fav" : ""}" data-id="${+c.id}" aria-label="${esc(c.name)}">
       ${icon(c.id, "")}<span>${esc(c.name)}</span>
-    </button>`).join("") : `<div class="empty">No champions match</div>`;
+    </button>`).join("") : `<div class="empty">No champion called "${esc(q)}"</div>`;
 }
 
-/* ============================== in game ============================== */
+/* ================================================================== in game */
 function renderGame(s) {
   const g = s.game;
   const me = g && g.me;
-  show("noLive", !g);
+  // "loading" placeholder only while a game is starting or running, never after it ended
+  show("noLive", !g && ["GameStart", "InProgress", "Reconnect"].includes(s.phase));
   show("meCard", !!me);
   show("sbCard", !!g);
   show("feedCard", g && g.feed.length);
@@ -624,30 +849,31 @@ function renderGame(s) {
   if (me) {
     const goalPct = me.cs_min != null ? Math.min(100, Math.round(100 * me.cs_min / csGoal)) : 0;
     const over = s.phase !== "InProgress" && s.phase !== "GameStart";
-    const result = g.result ? `<div class="result ${g.result === "Win" ? "win" : "lose"}">${g.result === "Win" ? "VICTORY" : "DEFEAT"}</div>` : "";
+    const result = over && g.result ? `<div class="result ${g.result === "Win" ? "win" : "lose"}">${g.result === "Win" ? "Victory" : "Defeat"}</div>` : "";
     $("meCard").innerHTML = `
-      ${over ? result : ""}
+      ${result}
       <div class="me-head">
-        ${icon(me.champ_id)}
+        ${icon(me.champ_id, "avatar lg")}
         <div style="min-width:0">
-          <div class="kda">${+me.k} / <span class="d">${+me.d}</span> / ${+me.a}</div>
-          <div class="lvl">${esc(me.champ)} · Level ${+me.level} · ${+me.kda} KDA</div>
+          <div class="kda">${+me.k}<span class="sep">/</span><span class="d">${+me.d}</span><span class="sep">/</span>${+me.a}</div>
+          <div class="muted" style="font-size:13.5px">${esc(me.champ)} · Level ${+me.level} · ${+me.kda} KDA</div>
         </div>
       </div>
-      ${me.respawn ? `<div class="dead">💀 Respawning in ${+me.respawn}s</div>` : ""}
-      <div class="stats4">
-        <div class="stat"><b>${+me.cs}</b><small>CS</small></div>
-        <div class="stat"><b>${me.cs_min ?? "–"}</b><small>CS/min</small></div>
-        <div class="stat"><b>${me.kp != null ? +me.kp + "%" : "–"}</b><small>Kill part.</small></div>
-        <div class="stat"><b>${+me.ward}</b><small>Vision</small></div>
+      ${me.respawn ? `<div class="callout bad" style="margin-top:14px"><span class="ico">${svg("skull")}</span>
+        <div class="body"><div class="t">Respawning in ${+me.respawn}s</div></div></div>` : ""}
+      <div class="tiles">
+        <div class="tile"><b>${+me.cs}</b><small>CS</small></div>
+        <div class="tile"><b>${me.cs_min ?? "–"}</b><small>CS / min</small></div>
+        <div class="tile"><b>${me.kp != null ? +me.kp + "%" : "–"}</b><small>Kill part.</small></div>
+        <div class="tile"><b>${+me.ward}</b><small>Vision</small></div>
       </div>
-      <div>
-        <div class="row"><small class="hint" style="margin:0">CS/min goal ${csGoal}</small><small class="hint" style="margin:0">${goalPct}%</small></div>
+      <div style="margin-top:16px">
+        <div class="row between" style="font-size:12.5px;margin-bottom:6px"><span class="faint">CS/min goal ${csGoal}</span><span class="${goalPct >= 100 ? "" : "faint"}" style="${goalPct >= 100 ? "color:var(--good)" : ""}">${goalPct}%</span></div>
         <div class="bar${goalPct >= 100 ? " good" : ""}"><i style="width:${goalPct}%"></i></div>
       </div>
-      <div class="row">
+      <div class="row between" style="margin-top:16px">
         <div class="items big">${itemIcons(me.items)}</div>
-        <div style="text-align:right"><b style="color:var(--gold);font-size:20px">${(+me.gold).toLocaleString()}</b><br><small class="hint">gold</small></div>
+        <div style="text-align:right"><b style="color:var(--gold);font-size:19px" class="tnum">${(+me.gold).toLocaleString()}</b><div class="faint" style="font-size:12px">gold</div></div>
       </div>`;
   }
 
@@ -655,25 +881,25 @@ function renderGame(s) {
   $("sEnemy").textContent = g.score[1];
   const row = p => `
     <tr class="${p.me ? "me" : ""}${p.dead ? " isdead" : ""}">
-      <td style="width:32px">${icon(p.champ_id)}</td>
-      <td class="nm ellipsis">${esc(p.champ)}<br><small class="hint">${esc(p.name)}</small></td>
+      <td style="width:36px">${icon(p.champ_id, "avatar sm")}</td>
+      <td class="nm ellipsis" style="max-width:120px"><b>${esc(p.champ)}</b><small>${esc(p.name)}</small></td>
       <td class="num">${+p.k}/${+p.d}/${+p.a}</td>
-      <td class="num">${+p.cs}</td>
+      <td class="num faint">${+p.cs}</td>
       <td class="hide-s"><div class="items">${itemIcons(p.items)}</div></td>
     </tr>`;
   $("sb").innerHTML = `
     <tr class="team-h"><td colspan="5">Your team</td></tr>${g.ally.map(row).join("")}
     <tr class="team-h"><td colspan="5">Enemy team</td></tr>${g.enemy.map(row).join("")}`;
   $("feed").innerHTML = g.feed.slice().reverse().map(f =>
-    `<div><span class="t">${esc(f.t)}</span><span class="${esc(f.kind)}">${esc(f.text)}</span></div>`).join("");
+    `<div class="ev ${esc(f.kind)}"><span class="t">${esc(f.t)}</span><span class="dot"></span><span class="x">${esc(f.text)}</span></div>`).join("");
 }
 
-/* ============================== timers ============================== */
+/* ================================================================== timers */
 let lastStatus = null, statusAt = 0;
 
-// Clock for the status card, dt seconds after the data was fetched
+// Clock for the hero, dt seconds after the data was fetched
 function clockText(s, dt) {
-  if (!s) return "";
+  if (!s || !reachable) return "";
   if (s.phase === "Matchmaking" && s.time_in_queue != null) return mmss(s.time_in_queue + dt);
   if (s.phase === "ReadyCheck" && s.ready_timer != null) return Math.max(0, Math.ceil(10 - s.ready_timer - dt)) + "s";
   if (s.phase === "ChampSelect" && s.cs_time_left != null) return Math.max(0, Math.ceil(s.cs_time_left - dt)) + "s";
@@ -681,76 +907,114 @@ function clockText(s, dt) {
   if (s.game && IN_GAME.includes(s.phase)) return s.game.clock;
   return "";
 }
-setInterval(() => { $("clock").textContent = clockText(lastStatus, (Date.now() - statusAt) / 1000); }, 1000);
+// Progress bar under the clock (0-100), or null for none
+function barPct(s, dt) {
+  if (!s || !reachable) return null;
+  if (s.phase === "Matchmaking" && s.time_in_queue != null && s.estimated)
+    return Math.min(100, 100 * (s.time_in_queue + dt) / s.estimated);
+  if (s.phase === "ReadyCheck" && s.ready_timer != null) return Math.max(0, 100 - 10 * (s.ready_timer + dt));
+  if (s.phase === "ChampSelect" && s.cs_time_left != null) return Math.max(0, Math.min(100, 100 * (s.cs_time_left - dt) / 30));
+  return null;
+}
+function tick() {
+  const dt = (Date.now() - statusAt) / 1000;
+  const c = clockText(lastStatus, dt);
+  $("clock").textContent = c;
+  show("clock", !!c);
+  const p = barPct(lastStatus, dt);
+  show("heroBar", p != null);
+  if (p != null) {
+    $("heroBarFill").style.width = p + "%";
+    $("heroBar").className = "bar " + (lastStatus.phase === "Matchmaking" ? "gold" : lastStatus.phase === "ReadyCheck" && p < 35 ? "bad" : "");
+  }
+}
+setInterval(tick, 1000);
 
-/* ============================== main render ============================== */
+/* ================================================================== main render */
 let lastPhase = null;
 function render(s) {
-  $("dot").classList.toggle("ok", !!s.connected);
-  $("phase").textContent = s.connected ? (NAMES[s.phase] || s.phase) : "Client not running";
+  reachable = true;
+  lastStatus = s;
+  statusAt = Date.now();
+  $("conn").className = "conn " + (s.connected ? "ok" : "warn");
+  $("conn").textContent = s.connected ? "Connected to League" : "Waiting for League";
   $("startup").classList.toggle("on", !!s.startup);
+  $("startup").setAttribute("aria-checked", !!s.startup);
   $("auto").classList.toggle("on", !!s.auto_accept);
-  show("updateCard", !!s.update);
-  if (s.update) {
-    const u = s.update, v = esc(u.version);
-    $("updateCard").innerHTML =
-      u.state === "downloading" ? `<b>Downloading v${v}… ${+u.progress}%</b><div class="bar" style="margin-top:8px"><i style="width:${+u.progress}%"></i></div>`
-      : u.state === "installing" ? `<b>Installing v${v}…</b><div class="hint">Approve the Windows prompt on your PC. League Remote restarts by itself.</div>`
-      : `<div class="row"><div><b>League Remote v${v} is available.</b>` +
-        (u.state === "error" ? `<div class="hint warn">${esc(u.message)}</div>` : "") +
-        `<div class="hint"><a href="${esc(u.url)}" target="_blank" rel="noopener">What's new</a></div></div>` +
-        (s.can_self_update ? `<button class="small go" id="updateNow">UPDATE NOW</button>`
-                           : `<a class="small go" href="${esc(u.url)}" target="_blank" rel="noopener">DOWNLOAD</a>`) + `</div>`;
-  }
+  $("auto").setAttribute("aria-checked", !!s.auto_accept);
+  renderUpdate(s);
   $("log").textContent = s.last_event || "";
   if (s.version) $("version").textContent = `v${s.version}`;
   if (s.cs_goal) csGoal = s.cs_goal;
   if (s.favorites) { favorites = s.favorites; renderFavList(); }
 
-  lastStatus = s;
-  statusAt = Date.now();
-  let sub = "";
-  if (s.phase === "Matchmaking") {
-    sub = s.estimated ? `Estimated: ${mmss(s.estimated)}` : "";
-  } else if (s.phase === "ReadyCheck") {
-    sub = s.my_response === "Accepted" ? "✔ You accepted — waiting for others"
-        : s.my_response === "Declined" ? "✖ You declined" : "Tap ACCEPT now!";
-  } else if (s.phase === "ChampSelect") {
-    sub = CS_PHASES[s.cs_phase] || s.cs_phase || "";
-  } else if (IN_GAME.includes(s.phase) && s.game) {
-    sub = s.game.mode === "JADE" ? "League Classic" : (s.game.mode || "");
-  }
-  $("clock").textContent = clockText(s, 0);
-  $("sub").textContent = sub;
-  $("rankLine").textContent = s.rank_line || "";
-  show("rankLine", s.rank_line && !IN_GAME.includes(s.phase) && s.phase !== "ChampSelect");
-
   const inCs = s.phase === "ChampSelect" && s.cs;
+  const inGame = IN_GAME.includes(s.phase);
+  if (!s.connected) {
+    setHero("noclient", "Start League of Legends", "League Remote connects by itself as soon as the League client is open.");
+  } else if (s.phase === "Matchmaking") {
+    setHero("Matchmaking", "", s.estimated ? `Estimated ${mmss(s.estimated)}. You'll get an alert when a match is found.` : "You'll get an alert when a match is found.");
+  } else if (s.phase === "ReadyCheck") {
+    setHero("ReadyCheck", "", s.my_response === "Accepted" ? "You accepted. Waiting for the other players…"
+      : s.my_response === "Declined" ? "You declined this match." : "Accept before the timer runs out.");
+  } else if (inCs) {
+    setHero("ChampSelect", "", CS_PHASES[s.cs_phase] || s.cs_phase || "");
+  } else if (inGame) {
+    const over = !["GameStart", "InProgress", "Reconnect"].includes(s.phase);
+    setHero(s.phase, "", s.phase === "Reconnect" ? "You got disconnected from your game."
+      : over ? "Your SP change shows up in Stats in a moment." : s.game ? (s.game.mode === "JADE" ? "League Classic" : s.game.mode || "") : "");
+  } else {
+    setHero(s.phase in HERO ? s.phase : "None", s.phase === "Lobby" ? "Ready to queue" : "All set",
+      "Queue up in League. League Remote alerts your phone when a match is found.");
+  }
+  $("rankLine").textContent = s.rank_line || "";
+  show("rankLine", !!s.rank_line && !inGame && !inCs);
+  tick();
+
   ["turn", "teamCard"].forEach(id => show(id, inCs));
   if (inCs) renderChampSelect(s.cs);
   else {
-    ["swapIn", "myChamps", "pickerCard", "lock", "aegisCs"].forEach(id => show(id, false));
+    ["swapIn", "myChamps", "pickerCard", "lockBar", "aegisCs"].forEach(id => show(id, false));
+    document.body.classList.remove("cs");
     selected = 0; selectedFor = null; lastCs = null; lastGridKey = "";
   }
 
-  const inGame = IN_GAME.includes(s.phase);
   if (inGame) renderGame(s);
   else ["noLive", "meCard", "sbCard", "feedCard"].forEach(id => show(id, false));
   show("reconnect", s.phase === "Reconnect");
-  show("settings", !inCs && !inGame);  // keep champ select and game screens focused
+  show("settings", !inCs && !inGame && s.phase !== "ReadyCheck");  // keep urgent screens focused
 
-  show("queueBtns", ["Matchmaking", "ReadyCheck"].includes(s.phase));
-  const canAnswer = s.phase === "ReadyCheck" && s.my_response === "None";
+  const ready = s.phase === "ReadyCheck";
+  show("queueBtns", ready);
+  const canAnswer = ready && s.my_response === "None";
   $("accept").disabled = $("decline").disabled = !canAnswer;
-  document.body.classList.toggle("ready", s.phase === "ReadyCheck");
-  document.title = s.phase === "ReadyCheck" ? "⚠ MATCH FOUND"
-    : inCs && s.cs.action && s.cs.action.in_progress ? "⚠ YOUR TURN"
+  document.body.classList.toggle("ready", ready);
+  if (ready && lastPhase !== "ReadyCheck" && navigator.vibrate) {
+    try { navigator.vibrate([250, 120, 250, 120, 500]); } catch (e) { /* not allowed */ }
+  }
+  document.title = ready ? "Match found! · League Remote"
+    : inCs && s.cs.action && s.cs.action.in_progress ? "Your turn · League Remote"
     : inGame && s.game ? `${s.game.clock} · League Remote` : "League Remote";
   if (lastPhase !== s.phase) statsDirty = true; // a finished game may have been recorded
   lastPhase = s.phase;
 }
 
-/* ============================== stats ============================== */
+function renderUpdate(s) {
+  show("updateCard", !!s.update);
+  if (!s.update) return;
+  const u = s.update, v = esc(u.version);
+  $("updateCard").className = "callout " + (u.state === "error" ? "bad" : "accent");
+  $("updateCard").innerHTML = `<span class="ico">${svg(u.state === "error" ? "x" : "download")}</span><div class="body">` + (
+    u.state === "downloading" ? `<div class="t">Downloading v${v}… ${+u.progress}%</div><div class="bar" style="margin-top:10px"><i style="width:${+u.progress}%"></i></div>`
+    : u.state === "installing" ? `<div class="t">Installing v${v}…</div><div class="d">Approve the Windows prompt on your PC. League Remote restarts by itself.</div>`
+    : `<div class="t">Version ${v} is available</div>
+       <div class="d">${u.state === "error" ? esc(u.message) : `<a href="${esc(u.url)}" target="_blank" rel="noopener">See what's new</a>`}</div>
+       <div class="actions">${s.can_self_update
+         ? `<button class="btn primary sm" id="updateNow">${u.state === "error" ? "Try again" : "Update now"}</button>`
+         : `<a class="btn primary sm" href="${esc(u.url)}" target="_blank" rel="noopener">Download</a>`}</div>`) + `</div>`;
+}
+
+/* ================================================================== stats */
 let statsDirty = true;
 let statsAt = 0;
 async function loadStats() {
@@ -763,17 +1027,32 @@ async function loadStats() {
 }
 
 function spark(values, goal) {
-  if (!values.length) return `<div class="hint">Play a game to start tracking.</div>`;
-  const W = 300, H = 70, P = 6;
+  if (!values.length) return `<p class="note" style="margin:0">Play a game to start tracking.</p>`;
+  const W = 300, H = 76, P = 6;
   const max = Math.max(goal * 1.2, ...values);
   const x = i => values.length === 1 ? W / 2 : P + i * (W - 2 * P) / (values.length - 1);
   const y = v => H - P - v / max * (H - 2 * P);
   const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const area = `${x(0).toFixed(1)},${H} ${pts} ${x(values.length - 1).toFixed(1)},${H}`;
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="CS per minute trend">
-    <line x1="0" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" stroke="#c8aa6e" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>
-    <polyline points="${pts}" fill="none" stroke="#0ac8b9" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2ccfbd" stop-opacity=".28"/><stop offset="1" stop-color="#2ccfbd" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="${area}" fill="url(#sg)"/>
+    <line x1="0" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" stroke="#d9b56c" stroke-opacity=".7" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <polyline points="${pts}" fill="none" stroke="#2ccfbd" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
   </svg>
-  <div class="row"><small class="hint" style="margin:0">Dashed line = goal ${csGoal}</small><small class="hint" style="margin:0">Latest ${+values[values.length - 1]}</small></div>`;
+  <div class="row between" style="font-size:12.5px"><span class="faint">Dashed line: your goal (${csGoal})</span><span class="muted">Latest <b class="tnum">${+values[values.length - 1]}</b></span></div>`;
+}
+
+// Rank emblem: a gold hexagon with the division (original artwork, not Riot's)
+function emblemSvg(rk) {
+  const legend = rk.emblem === "Legend";
+  const label = legend ? "L" : (rk.division || "");
+  return `<svg class="emblem" viewBox="0 0 72 72" role="img" aria-label="${esc(rk.emblem)} ${esc(rk.division || "")}">
+    <defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f1d58f"/><stop offset="1" stop-color="#a8823d"/></linearGradient></defs>
+    <polygon points="36,3 65,19.5 65,52.5 36,69 7,52.5 7,19.5" fill="#1a1508" stroke="url(#eg)" stroke-width="3"/>
+    <polygon points="36,12 57,24 57,48 36,60 15,48 15,24" fill="none" stroke="#d9b56c" stroke-opacity=".35" stroke-width="1.5"/>
+    <text x="36" y="44" text-anchor="middle" font-family="Inter,system-ui,sans-serif" font-size="${label.length > 2 ? 17 : 21}" font-weight="800" fill="url(#eg)">${esc(label)}</text>
+  </svg>`;
 }
 
 let wrChoice = null;   // what-if win rate picked on the page (null = default)
@@ -784,8 +1063,9 @@ function renderRank(r, ladder) {
   ["rankCard", "climbCard", "scenCard", "spHistCard"].forEach(id => show(id, !!r));
   if (!r) return;
   const rk = r.rank;
+  $("emblem").innerHTML = emblemSvg(rk);
   $("rankName").textContent = rk.emblem + (rk.division ? " " + rk.division : "");
-  const sub = [`${r.season.wins}W ${r.season.losses}L · ${r.season.wr}% this season`];
+  const sub = [`${r.season.wins}W ${r.season.losses}L · ${r.season.wr}%`];
   if (ladder && ladder.position) sub.push(`#${ladder.position} of ${ladder.size} in your league`);
   $("rankSub").textContent = sub.join(" · ");
   $("rankSp").textContent = rk.sp;
@@ -794,15 +1074,14 @@ function renderRank(r, ladder) {
   $("lossSp").textContent = r.sp.loss != null ? `−${r.sp.loss}` : "?";
   const n = (k, w) => `${k} ${k === 1 ? w : w === "loss" ? "losses" : w + "s"}`;
   $("spNote").textContent = r.sp.win == null || r.sp.loss == null
-    ? "Riot doesn't store how much SP past games gave, so League Remote learns it from your games from now on " +
-      `(${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")} tracked so far). ` +
-      "Forecasts appear once it has seen at least one win and one loss."
+    ? "Riot doesn't store how much SP past games gave, so League Remote learns it from your games " +
+      `(${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")} so far). Forecasts appear after a tracked win and loss.`
     : r.sp.confident ? `Average of your last ${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")}.`
-    : `Rough: based on only ${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")} so far.`;
+    : `Rough estimate: based on only ${n(r.sp.tracked_wins, "win")} and ${n(r.sp.tracked_losses, "loss")}.`;
 
   show("wrBox", r.sp_known);
   $("presets").innerHTML = (r.presets || []).map(p =>
-    `<button class="preset" data-wr="${+p.wr}">${esc(p.label)}: ${+p.wr}%</button>`).join("");
+    `<button class="preset" data-wr="${+p.wr}">${esc(p.label)} · ${+p.wr}%</button>`).join("");
   if (wrChoice == null) wrChoice = r.win_rate;
   if (document.activeElement !== $("wr")) $("wr").value = wrChoice;
   renderForecast();
@@ -812,17 +1091,19 @@ function renderRank(r, ladder) {
     : r.losses_to_drop ? `${r.losses_to_drop} loss${r.losses_to_drop > 1 ? "es" : ""} in a row would drop you a division.` : "";
 
   show("scenCard", r.scenarios.length);
-  $("scen").innerHTML = r.scenarios.map(s => `
-    <tr><td>${s.n} ${s.n > 1 ? "games" : "game"}</td>
-      <td class="w">▲ ${esc(s.win)}</td><td class="l">▼ ${esc(s.loss)}</td></tr>`).join("");
+  const shortRank = t => esc(String(t).replace(" SP", "")).replace(/ (\d+)$/, " · $1");
+  $("scen").innerHTML = `<div class="h"></div><div class="h">All wins</div><div class="h">All losses</div>` +
+    r.scenarios.map(s => `<div class="faint">${s.n} ${s.n > 1 ? "games" : "game"}</div>
+      <div class="w">${shortRank(s.win)}</div><div class="l">${shortRank(s.loss)}</div>`).join("");
 
   $("spHist").innerHTML = r.history.length ? r.history.map(c => `
-    <div class="sprow">
-      <span class="spchip ${c.delta >= 0 ? "up" : "down"}">${c.delta >= 0 ? "+" : "−"}${Math.abs(c.delta)}</span>
-      <div style="flex:1;min-width:0" class="ellipsis">${c.aegis && c.win ? "🛡 " : ""}${c.champ ? esc(c.champ) + " · " : ""}${c.role ? esc(c.role) + " · " : ""}${c.games > 1 ? `${+c.games} games · ` : ""}${esc(c.after)}</div>
-      <small class="hint" style="margin:0">${esc(c.time)}</small>
+    <div class="rowline">
+      <span class="delta ${c.delta >= 0 ? "up" : "down"}">${c.delta >= 0 ? "+" : "−"}${Math.abs(c.delta)}</span>
+      <div class="grow"><div class="t ellipsis">${c.aegis && c.win ? svg("shield", 'style="width:14px;height:14px;color:var(--gold)"') + " " : ""}${esc(c.champ || (c.games > 1 ? `${+c.games} games` : "Game"))}${c.role ? ` · ${esc(c.role)}` : ""}</div>
+        <div class="d ellipsis">Now ${esc(c.after)}</div></div>
+      <div class="r">${ago(c.time)}</div>
     </div>`).join("")
-    : `<div class="hint">SP changes appear here after your next Classic game. Riot doesn't keep this history, so League Remote records it while it's running.</div>`;
+    : `<p class="note" style="margin:0">Your SP changes appear here after your next Classic game. Riot doesn't keep this history, so League Remote records it while it's running.</p>`;
 }
 
 function renderForecast() {
@@ -834,20 +1115,19 @@ function renderForecast() {
   if (known) {
     $("wrVal").textContent = wrChoice + "%";
     document.querySelectorAll(".preset").forEach(b => b.classList.toggle("on", +b.dataset.wr === +wrChoice));
-    $("evLine").textContent = `At ${wrChoice}% you average ${ev >= 0 ? "+" : "−"}${Math.abs(ev).toFixed(1)} SP per game. ` +
+    $("evLine").textContent = `At ${wrChoice}% you gain ${ev >= 0 ? "+" : "−"}${Math.abs(ev).toFixed(1)} SP per game on average. ` +
       `Break-even is ${r.break_even_wr}%.`;
   }
   $("goals").innerHTML = r.goals.length ? r.goals.map(g => {
     const games = ev > 0 ? Math.ceil(g.need / ev) : null;
-    const right = !known ? "" : games ? `~${games} games` : "not climbing at this WR";
+    const right = !known ? "" : games ? `~${games} games` : "Not climbing";
     const detail = [`${+g.need} SP away`];
     if (g.min_wins) detail.push(`at least ${+g.min_wins} win${g.min_wins > 1 ? "s" : ""} in a row`);
     return `<div class="goal">
-      <div class="gname${g.emblem ? " emb" : ""}">${esc(g.name)}</div>
-      <div class="gnum${games || !known ? "" : " no"}">${right}</div>
-      <small class="hint" style="margin:0">${detail.join(" · ")}</small>
+      <div class="grow"><div class="n${g.emblem ? " emb" : ""}">${esc(g.name)}</div><div class="d">${detail.join(" · ")}</div></div>
+      <div class="v${games || !known ? "" : " no"}">${right}</div>
     </div>`;
-  }).join("") : `<div class="hint">You're at Legend, the top. SP is uncapped from here.</div>`;
+  }).join("") : `<p class="note" style="margin:0">You're at Legend, the top. SP is uncapped from here.</p>`;
 }
 $("wr").oninput = e => { wrChoice = +e.target.value; renderForecast(); };
 $("presets").onclick = e => {
@@ -860,18 +1140,19 @@ function renderAegis(r, prefs) {
   if (!r) return;
   const rules = r.aegis.rules;
   const order = prefs && prefs.length
-    ? `<div class="prefs">${prefs.map((p, i) => `<span class="${rules[i + 1] ? "boost" : ""}">#${i + 1} ${esc(p)}${rules[i + 1] ? ` +${rules[i + 1]}%` : ""}</span>`).join("")}</div>`
-    : `<div class="hint">Your role order shows up once you're in a Classic lobby.</div>`;
+    ? `<div class="prefs">${prefs.map((p, i) => `<span class="pill ${rules[i + 1] ? "gold" : ""}">#${i + 1} ${esc(p)}${rules[i + 1] ? ` · +${rules[i + 1]}%` : ""}</span>`).join("")}</div>`
+    : `<p class="note">Your role order shows up once you're in a Classic lobby.</p>`;
   const seen = r.aegis.seen.length ? r.aegis.seen.map(a => `
-    <div class="sprow"><span class="spchip up">+${+a.delta}</span>
-      <div style="flex:1;min-width:0">${esc(a.role)} (#${+a.pref}) win${a.observed_bonus != null ? ` · ${a.observed_bonus >= 0 ? "+" : ""}${+a.observed_bonus}% vs your usual win` : ""}</div>
-      <small class="hint" style="margin:0">${esc(a.time)}</small></div>`).join("")
-    : `<div class="hint">No wins tracked in a #3–#5 role yet.</div>`;
+    <div class="rowline"><span class="delta up">+${+a.delta}</span>
+      <div class="grow"><div class="t">${esc(a.role)} win <span class="faint">(#${+a.pref})</span></div>
+        <div class="d">${a.observed_bonus != null ? `${a.observed_bonus >= 0 ? "+" : ""}${+a.observed_bonus}% vs your usual win` : "Bonus unknown until your usual win SP is learned"}</div></div>
+      <div class="r">${ago(a.time)}</div></div>`).join("")
+    : `<p class="note" style="margin:6px 0 0">No wins tracked in a #3–#5 role yet.</p>`;
   $("aegisBody").innerHTML = `
-    <div class="hint" style="color:var(--text)">Autofilled into your #3, #4 or #5 role and you <b>win</b>: SP +40%, +70% or +100%.
-      Occasional, not guaranteed, and lost if you swap roles in champ select.</div>
+    <p class="muted" style="margin:0;font-size:14px">Autofilled into your #3, #4 or #5 role and you <b>win</b>: +40%, +70% or +100% SP.
+      Occasional, not guaranteed, and lost if you swap roles.</p>
     ${order}
-    <div class="label" style="margin-top:12px">Tracked Aegis-role wins</div>${seen}`;
+    <div class="card-title" style="margin:16px 0 4px">Tracked Aegis wins</div>${seen}`;
 }
 
 function renderStats(st) {
@@ -883,46 +1164,46 @@ function renderStats(st) {
   const season = st.season;
   const o = season ? { games: season.wins + season.losses, wr: season.wr, w: season.wins, l: season.losses }
                    : { games: st.games, wr: st.wr, w: st.wins, l: st.losses };
-  $("overviewLabel").textContent = season ? "Classic season · all games" : `Classic · last ${st.games} games`;
+  $("overviewLabel").innerHTML = season ? `Classic season<span class="aside">all games</span>` : `Classic<span class="aside">last ${+st.games} games</span>`;
   $("overview").innerHTML = `
-    <div class="stat"><b>${+o.games}</b><small>Games</small></div>
-    <div class="stat"><b>${o.wr != null ? +o.wr + "%" : "–"}</b><small>Win rate</small></div>
-    <div class="stat"><b>${+o.w}–${+o.l}</b><small>W–L</small></div>`;
+    <div class="tile"><b>${+o.games}</b><small>Games</small></div>
+    <div class="tile"><b>${o.wr != null ? +o.wr + "%" : "–"}</b><small>Win rate</small></div>
+    <div class="tile"><b>${+o.w}–${+o.l}</b><small>Wins – losses</small></div>`;
   const missing = season ? season.wins + season.losses - st.games : 0;
   $("scope").textContent = st.span
-    ? `Champion stats, trends and recent games cover your last ${st.games} games (${st.span.first} to ${st.span.last}, ` +
-      `${st.wins}W ${st.losses}L). ` +
-      (missing > 0 ? `The League client only keeps your last 100 games, so about ${missing} older season games have no details. ` : "") +
-      "League Remote saves every game from now on, so nothing else drops off."
+    ? `Champion stats and recent games cover your last ${st.games} games (${st.wins}W ${st.losses}L). ` +
+      (missing > 0 ? `The League client only keeps 100 games, so about ${missing} early-season games have no details. ` : "") +
+      "League Remote keeps every game from now on."
     : "";
-  $("champLabel").textContent = st.games ? `Champions · last ${st.games} games` : "Champions";
+  $("champLabel").innerHTML = st.games ? `Champions<span class="aside">last ${+st.games} games</span>` : "Champions";
   const bits = [];
-  if (st.streak) bits.push(`${st.streak.win ? "🔥" : "🧊"} ${st.streak.count} ${st.streak.win ? "win" : "loss"} streak`);
-  if (st.today.wins + st.today.losses) bits.push(`Today ${st.today.wins}W ${st.today.losses}L`);
-  $("streak").textContent = bits.join(" · ");
+  if (st.streak) bits.push(`<span class="pill ${st.streak.win ? "good" : "bad"}">${st.streak.win ? svg("flame", 'style="width:13px;height:13px"') : ""}${st.streak.count} ${st.streak.win ? "win" : "loss"} streak</span>`);
+  if (st.today.wins + st.today.losses) bits.push(`<span class="pill">Today ${st.today.wins}W ${st.today.losses}L</span>`);
+  $("streak").innerHTML = bits.join("");
+  show("streak", bits.length);
   $("trend").innerHTML = spark(st.trend, csGoal);
 
   $("champTable").innerHTML = st.champions.length ? st.champions.map(c => `
-    <div class="champrow">
+    <div class="rowline">
       ${icon(c.champ_id)}
-      <div style="min-width:0">
-        <div class="nm ellipsis">${c.fav ? `<span class="star">★</span> ` : ""}${esc(c.champ)}</div>
-        <small class="hint">${+c.games} games · ${esc(c.avg)} (${+c.kda} KDA) · ${+c.cs_min} CS/min${c.kp != null ? ` · ${+c.kp}% KP` : ""}</small>
-        ${c.best ? `<br><small class="hint">Best: ${esc(c.best.score)}</small>` : ""}
+      <div class="grow">
+        <div class="t ellipsis">${esc(c.champ)}${c.fav ? ` ${svg("star", 'style="width:13px;height:13px;color:var(--gold);fill:var(--gold)"')}` : ""}</div>
+        <div class="d">${+c.games} games · ${+c.kda} KDA · ${+c.cs_min} CS/min${c.kp != null ? ` · ${+c.kp}% KP` : ""}</div>
       </div>
-      <div class="wr ${c.wr >= 55 ? "hi" : c.wr < 45 ? "lo" : ""}">${+c.wr}%<br><small class="hint">${+c.wins}W ${c.games - c.wins}L</small></div>
-    </div>`).join("") : `<div class="hint">No games yet — finish a game with League Remote running.</div>`;
+      <div style="text-align:right"><div class="wr ${c.wr >= 55 ? "hi" : c.wr < 45 ? "lo" : ""}">${+c.wr}%</div><div class="d faint" style="font-size:12px">${+c.wins}W ${c.games - c.wins}L</div></div>
+    </div>`).join("") : `<p class="note" style="margin:0">No games yet. Finish a game with League Remote running.</p>`;
 
   $("recent").innerHTML = st.recent.length ? st.recent.map(g => `
-    <div class="game">
+    <div class="rowline">
       <div class="wl ${g.win === true ? "w" : g.win === false ? "l" : "u"}">${g.win === true ? "W" : g.win === false ? "L" : "?"}</div>
       ${icon(g.champ_id)}
-      <div class="grow"><b>${esc(g.champ)}</b> ${+g.k}/${+g.d}/${+g.a}<br><small class="hint">${esc(g.date)} · ${+g.minutes} min</small></div>
-      <div class="num">${g.sp != null ? `<span class="spchip ${g.sp >= 0 ? "up" : "down"}">${g.sp >= 0 ? "+" : "−"}${Math.abs(g.sp)} SP</span><br>` : ""}${+g.cs_min} CS/min${g.kp != null ? ` · ${+g.kp}% KP` : ""}</div>
-    </div>`).join("") : `<div class="hint">Your games will show up here.</div>`;
+      <div class="grow"><div class="t">${esc(g.champ)} <span class="muted tnum" style="font-weight:500">${+g.k}/${+g.d}/${+g.a}</span></div>
+        <div class="d">${ago(g.date)} · ${Math.round(+g.minutes)} min · ${+g.cs_min} CS/min</div></div>
+      ${g.sp != null ? `<span class="delta ${g.sp >= 0 ? "up" : "down"}">${g.sp >= 0 ? "+" : "−"}${Math.abs(g.sp)}</span>` : ""}
+    </div>`).join("") : `<p class="note" style="margin:0">Your games will show up here.</p>`;
 }
 
-/* ============================== tabs ============================== */
+/* ================================================================== tabs */
 // The page fills in after data arrives, so the browser's own scroll restore on refresh
 // lands in the wrong place. Always start at the top instead.
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
@@ -933,21 +1214,20 @@ function setTab(t) {
   show("page-live", tab === "live");
   show("page-stats", tab === "stats");
   if (changed) window.scrollTo(0, 0);
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach(b => { b.classList.toggle("on", b.dataset.tab === tab); b.setAttribute("aria-selected", b.dataset.tab === tab); });
   if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
   if (tab === "stats") loadStats();
 }
 document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 window.addEventListener("hashchange", () => setTab(location.hash.slice(1)));
 
-/* ============================== actions ============================== */
-// Big, impossible-to-miss message at the bottom (errors in red)
+/* ================================================================== actions */
 function toast(text, bad) {
   const t = $("toast");
-  t.textContent = text;
+  t.innerHTML = svg(bad ? "x" : "check") + `<span>${esc(text)}</span>`;
   t.className = "toast show" + (bad ? " bad" : "");
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.className = "toast"; }, bad ? 6000 : 3000);
+  t._timer = setTimeout(() => { t.className = "toast" + (bad ? " bad" : ""); }, bad ? 6000 : 3000);
 }
 
 async function call(method, path) {
@@ -962,9 +1242,8 @@ async function call(method, path) {
     render(data);
     return true;
   } catch (e) {
-    $("dot").classList.remove("ok");
-    $("log").textContent = "Can't reach PC — same Wi-Fi?";
-    if (method === "POST") toast("Can't reach your PC — is your phone on the same Wi-Fi?", true);
+    renderOffline();
+    if (method === "POST") toast("Can't reach your PC. Is your phone on the same Wi-Fi?", true);
     return false;
   }
 }
@@ -973,8 +1252,8 @@ $("accept").onclick = () => call("POST", "/api/accept");
 $("decline").onclick = () => call("POST", "/api/decline");
 $("reconnect").onclick = () => call("POST", "/api/reconnect");
 $("startup").onclick = () => call("POST", "/api/startup");
-$("checkUpdate").onclick = async e => {
-  e.preventDefault();
+$("auto").onclick = () => call("POST", "/api/auto");
+$("checkUpdate").onclick = async () => {
   const link = $("checkUpdate");
   link.textContent = "Checking…";
   try {
@@ -983,7 +1262,7 @@ $("checkUpdate").onclick = async e => {
     render(data);
     toast(data.check.message, data.check.result === "error");
   } catch (err) {
-    toast("Can't reach your PC — is your phone on the same Wi-Fi?", true);
+    toast("Can't reach your PC. Is your phone on the same Wi-Fi?", true);
   }
   link.textContent = "Check for updates";
 };
@@ -991,7 +1270,6 @@ $("updateCard").onclick = async e => {
   if (!e.target.closest("#updateNow")) return;
   if (await call("POST", "/api/update")) toast("Updating… approve the Windows prompt on your PC");
 };
-$("auto").onclick = () => call("POST", "/api/auto");
 $("grid").onclick = e => {
   const b = e.target.closest(".champ");
   if (!b) return;
@@ -1004,8 +1282,8 @@ $("lock").onclick = async () => {
   const isBan = lastCs && lastCs.action && lastCs.action.type === "ban";
   const name = champName(selected);
   $("lock").disabled = true;
-  $("lock").textContent = isBan ? "BANNING…" : "LOCKING IN…";
-  if (await call("POST", `/api/cs/lock?champ=${selected}`)) toast(`✔ ${isBan ? "Banned" : "Locked in"} ${name}`);
+  $("lock").textContent = isBan ? "Banning…" : "Locking…";
+  if (await call("POST", `/api/cs/lock?champ=${selected}`)) toast(`${isBan ? "Banned" : "Locked in"} ${name}`);
   else if (lastCs) renderChampSelect(lastCs);  // put the button back so you can retry
 };
 $("favs").onclick = e => {
@@ -1021,10 +1299,10 @@ $("team").onclick = e => {
   if (c) call("POST", `/api/cs/swap?op=cancel&id=${c.dataset.cancel}`);
 };
 $("swapUp").onclick = () => call("POST", "/api/cs/swap-up");
-$("swapAccept").onclick = e => call("POST", `/api/cs/swap?op=accept&id=${e.target.dataset.id}`);
-$("swapDecline").onclick = e => call("POST", `/api/cs/swap?op=decline&id=${e.target.dataset.id}`);
+$("swapAccept").onclick = e => call("POST", `/api/cs/swap?op=accept&id=${e.currentTarget.dataset.id}`);
+$("swapDecline").onclick = e => call("POST", `/api/cs/swap?op=decline&id=${e.currentTarget.dataset.id}`);
 $("star").onclick = e => {
-  const d = e.target.dataset;
+  const d = e.currentTarget.dataset;
   call("POST", `/api/favorites?op=${d.op}&kind=${d.kind}&name=${encodeURIComponent(champName(selected))}`);
 };
 
@@ -1035,10 +1313,10 @@ function renderFavList() {
   $("favlist").dataset.key = key;
   $("favlist").innerHTML = list.length ? list.map((n, i) => `
     <div class="favrow">
-      <span class="n">${i + 1}.</span><span class="grow">${esc(n)}</span>
-      ${i ? `<button class="small" data-up="${esc(n)}">↑</button>` : ""}
-      <button class="small no" data-rm="${esc(n)}">✕</button>
-    </div>`).join("") : `<div class="hint">None yet — add your mains below.</div>`;
+      <span class="rank">${i + 1}</span><span class="grow">${esc(n)}</span>
+      ${i ? `<button class="btn ghost sm icon-only" data-up="${esc(n)}" aria-label="Move ${esc(n)} up">${svg("up")}</button>` : ""}
+      <button class="btn ghost sm icon-only" data-rm="${esc(n)}" aria-label="Remove ${esc(n)}">${svg("x")}</button>
+    </div>`).join("") : `<p class="note" style="margin:0">None yet. Add your mains below.</p>`;
 }
 $("favlist").onclick = e => {
   const u = e.target.closest("[data-up]"), r = e.target.closest("[data-rm]");
@@ -1053,13 +1331,14 @@ $("favAddBtn").onclick = () => {
 };
 $("favAdd").onkeydown = e => { if (e.key === "Enter") $("favAddBtn").click(); };
 
-/* ============================== start ============================== */
+/* ================================================================== start */
 window.scrollTo(0, 0);
 loadChamps();
 setTab(location.hash.slice(1));
 // How often the page asks your PC for new data (timers tick locally in between).
 // League Remote itself still checks the League client every 0.5 s, so alerts stay instant.
 function refreshDelay(s) {
+  if (!reachable) return 4000;
   if (!s || !s.connected) return 5000;
   if (s.phase === "ReadyCheck" || s.phase === "ChampSelect") return 1000;  // 10 s accept window, picks
   if (s.phase === "Matchmaking") return 2000;                             // spot a match quickly
